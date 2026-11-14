@@ -394,9 +394,22 @@
   var TYPES = R.orderTypes || ["Dine-in", "Pickup", "Delivery"];
   var fab = $("waFab"), fabTxt = $("waFabTxt"), tip = $("waTip"), tipTimer = 0;
   var cart = [];                                   // [{ id, s: size index or -1, n: quantity }]
-  var info = { type: "", name: "", table: "", addr: "", note: "" };
+  var info = { type: "", name: "", table: "", addr: "", note: "", loc: "" };   // loc = map link from "Share my location"
   var isDine = function (t) { return /dine/i.test(t); };
   var isDelivery = function (t) { return /deliver/i.test(t); };
+  var DLV = R.delivery || {};
+  var FEE = typeof DLV.fee === "number" && DLV.fee >= 0 ? DLV.fee : null;      // null -> confirmed on WhatsApp
+  var MIN = +DLV.minOrder || 0;
+  var locMsg = "";
+  function fee() { return isDelivery(info.type) && FEE ? FEE : 0; }
+  function belowMin() { return isDelivery(info.type) && MIN > 0 && totals().sum < MIN; }
+  function countOf(id, s) {
+    for (var i = 0; i < cart.length; i++) if (cart[i].id === id && cart[i].s === s) return cart[i].n;
+    return 0;
+  }
+  function thumb(it, sizes) {
+    return it.img ? img(it.img, sizes) : '<span class="wl__ico" aria-hidden="true">' + esc(it.icon || "+") + "</span>";
+  }
 
   function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function restore(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
@@ -434,9 +447,16 @@
       var u = unit(l);
       out.push(l.n + " × " + u.name + (u.size ? " (" + u.size + ")" : "") + " — " + l.n * u.price + " " + CUR);
     });
-    out.push("", "*Total: " + totals().sum + " " + CUR + "*", "", "*Order type:* " + info.type);
+    var sum = totals().sum, del = isDelivery(info.type);
+    out.push("");
+    if (del) {
+      out.push("Subtotal: " + sum + " " + CUR,
+        "Delivery: " + (FEE === null ? "please confirm" : FEE ? FEE + " " + CUR : "FREE"));
+    }
+    out.push("*Total: " + (sum + fee()) + " " + CUR + (del && FEE === null ? " + delivery" : "") + "*", "", "*Order type:* " + info.type);
     if (isDine(info.type) && info.table.trim()) out.push("*Table:* " + info.table.trim());
-    if (isDelivery(info.type) && info.addr.trim()) out.push("*Address:* " + info.addr.trim());
+    if (del && info.addr.trim()) out.push("*Address:* " + info.addr.trim());
+    if (del && info.loc) out.push("*Location:* " + info.loc);
     if (info.name.trim()) out.push("*Name:* " + info.name.trim());
     if (info.note.trim()) out.push("*Note:* " + info.note.trim());
     return out.join("\n");
@@ -445,12 +465,72 @@
   function linesHTML() {
     return cart.map(function (l, i) {
       var u = unit(l), it = byId[l.id].item;
-      return '<li><div class="wl__img">' + img(it.img, "48px") + "</div>" +
+      return '<li><div class="wl__img">' + thumb(it, "48px") + "</div>" +
         '<div class="wl__n"><b>' + esc(u.name) + "</b>" + (u.size ? "<span>" + esc(u.size) + "</span>" : "") + "</div>" +
         '<div class="qty"><button type="button" data-i="' + i + '" data-d="-1" aria-label="One less ' + esc(u.name) + '">&minus;</button>' +
         "<span>" + l.n + '</span><button type="button" data-i="' + i + '" data-d="1" aria-label="One more ' + esc(u.name) + '">+</button></div>' +
         '<b class="wl__p">' + l.n * u.price + " <small>" + CUR + "</small></b></li>";
     }).join("");
+  }
+  // "Add to your order": one tap adds one; the count shows on the tile and the line appears in the list above
+  function extrasHTML() {
+    return EXTRAS.map(function (x, i) {
+      var u = unit(x), n = countOf(x.id, x.s);
+      return '<button class="xt' + (n ? " on" : "") + '" type="button" data-x="' + i + '" aria-label="Add ' +
+        esc(u.name + (u.size ? " " + u.size : "") + ", " + u.price + " " + CUR) + '">' +
+        '<span class="xt__img">' + thumb(byId[x.id].item, "92px") +
+        '<i class="' + (n ? "xt__n" : "xt__plus") + '">' + (n || "+") + "</i></span>" +
+        "<b>" + esc(u.name) + "</b>" + (u.size ? '<span class="xt__s">' + esc(u.size) + "</span>" : "") +
+        '<span class="xt__p">' + u.price + " " + CUR + "</span></button>";
+    }).join("");
+  }
+  function syncExtras() {
+    var box = $("waExtras");
+    if (!box) return;
+    [].forEach.call(box.children, function (b) {
+      var x = EXTRAS[+b.getAttribute("data-x")], n = countOf(x.id, x.s), badge = b.querySelector("i");
+      b.classList.toggle("on", n > 0);
+      badge.className = n ? "xt__n" : "xt__plus";
+      badge.textContent = n || "+";
+    });
+  }
+  function sumsHTML() {
+    var sum = totals().sum, del = isDelivery(info.type), rows = "";
+    if (del) {
+      rows = '<div class="wa__row"><span>Subtotal</span><span>' + sum + " " + CUR + "</span></div>" +
+        '<div class="wa__row"><span>Delivery</span><span>' +
+        (FEE === null ? "confirmed on WhatsApp" : FEE ? FEE + " " + CUR : "FREE") + "</span></div>";
+    }
+    return rows + '<div class="wa__total"><span>Total</span><b>' + (sum + fee()) + " <small>" + CUR + "</small></b></div>" +
+      (belowMin() ? '<p class="wa__min" id="waMin">Minimum order for delivery is ' + MIN + " " + CUR +
+        ". Add " + (MIN - sum) + " " + CUR + " more.</p>" : "");
+  }
+  function locHTML() {
+    if (info.loc) {
+      return '<span class="loc__ok">&#10003; Location pin added</span>' +
+        '<button class="loc__rm" type="button" data-loc-rm>Remove</button>';
+    }
+    return '<button class="btn btn--ghost loc__btn" type="button" data-loc>&#128205; Share my location</button>' +
+      (locMsg ? '<p class="loc__msg">' + esc(locMsg) + "</p>" : "");
+  }
+  function getLoc(btn) {
+    function done(msg) { locMsg = msg; var box = $("waLoc"); if (box) box.innerHTML = locHTML(); }
+    if (!navigator.geolocation) { done("Location is not available on this phone. Please type your address."); return; }
+    btn.disabled = true;
+    btn.textContent = "Getting your location…";
+    navigator.geolocation.getCurrentPosition(function (p) {
+      info.loc = "https://maps.google.com/?q=" + p.coords.latitude.toFixed(6) + "," + p.coords.longitude.toFixed(6);
+      var a = waBody.querySelector('[data-f="addr"]');
+      if (a) a.classList.remove("err");
+      done("");
+    }, function () {
+      done("Couldn't get your location. Type your address, or send your location in WhatsApp after the order.");
+    }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
+  }
+  function refresh() {                             // after the basket changes while the popup is open
+    $("waLines").innerHTML = linesHTML();
+    $("waSums").innerHTML = sumsHTML();
+    syncExtras();
   }
   function field(k, label, attrs, show) {
     var v = esc(info[k] || "");
@@ -471,13 +551,17 @@
     }
     waBody.innerHTML =
       '<div class="wa__card"><p class="wa__h">Your order</p><ul class="wl" id="waLines">' + linesHTML() + "</ul>" +
-      '<div class="wa__total"><span>Total</span><b id="waTotal">' + t.sum + " <small>" + CUR + "</small></b></div></div>" +
+      '<div id="waSums">' + sumsHTML() + "</div></div>" +
+      (EXTRAS.length ? '<div class="wa__card"><p class="wa__h">Add to your order</p>' +
+        '<div class="xts" id="waExtras">' + extrasHTML() + "</div></div>" : "") +
       '<div class="wa__card"><p class="wa__h">Order type</p><div class="seg" id="waType" role="radiogroup" aria-label="Order type">' +
       TYPES.map(function (ty) {
         return '<button type="button" role="radio" data-type="' + esc(ty) + '" aria-checked="' + (ty === info.type) + '">' + esc(ty) + "</button>";
       }).join("") + "</div>" +
       field("table", "Table number", 'inputmode="numeric" placeholder="e.g. 5"', "dine") +
-      field("addr", "Delivery address", 'rows="2" placeholder="Building, street, area or location pin"', "delivery") +
+      (DLV.note ? '<p class="dlv__note">' + esc(DLV.note) + "</p>" : "") +
+      field("addr", "Delivery address", 'rows="2" autocomplete="street-address" placeholder="Building / villa, street, area"', "delivery") +
+      '<div class="loc" id="waLoc">' + locHTML() + "</div>" +
       field("name", "Your name", 'autocomplete="name" placeholder="Optional"') +
       field("note", "Note for the kitchen", 'rows="2" placeholder="Optional, e.g. less spicy"') + "</div>" +
       '<a class="btn btn--wa btn--send" id="waSend" href="' + waLink() + '" target="_blank" rel="noopener">' + WA_ICON + " Send order on WhatsApp</a>" +
@@ -489,6 +573,8 @@
     waBody.classList.toggle("t-dine", isDine(info.type));
     waBody.classList.toggle("t-delivery", isDelivery(info.type));
     waBody.querySelectorAll("[data-type]").forEach(function (b) { b.setAttribute("aria-checked", b.getAttribute("data-type") === info.type); });
+    var sums = $("waSums");
+    if (sums) sums.innerHTML = sumsHTML();         // delivery fee / minimum order depend on the type
   }
   function saveInfo() { store("bh-info", { name: info.name, type: info.type, addr: info.addr }); }
 
@@ -535,6 +621,11 @@
       info.table = decodeURIComponent(tm[1]);
       info.type = TYPES.filter(isDine)[0] || info.type;
     }
+    var om = /[?&]order=([^&#]+)/.exec(location.search);  // links for home orders: ?order=delivery (or pickup)
+    if (om) {
+      var want = decodeURIComponent(om[1]).toLowerCase();
+      info.type = TYPES.filter(function (ty) { return ty.toLowerCase().indexOf(want) === 0; })[0] || info.type;
+    }
     updateFab();
 
     doc.addEventListener("click", function (e) {
@@ -558,7 +649,17 @@
         if (l.n <= 0) cart.splice(cart.indexOf(l), 1);
         saveCart();
         if (!cart.length) renderWa();
-        else { $("waLines").innerHTML = linesHTML(); $("waTotal").innerHTML = totals().sum + " <small>" + CUR + "</small>"; }
+        else refresh();
+      } else if (b.hasAttribute("data-x")) {
+        var x = EXTRAS[+b.getAttribute("data-x")];
+        if (!x) return;
+        addToCart(x.id, x.s, 1);
+        refresh();
+      } else if (b.hasAttribute("data-loc")) {
+        getLoc(b);
+      } else if (b.hasAttribute("data-loc-rm")) {
+        info.loc = "";
+        $("waLoc").innerHTML = locHTML();
       } else if (b.hasAttribute("data-type")) {
         info.type = b.getAttribute("data-type");
         $("waType").classList.remove("err");
@@ -573,7 +674,9 @@
       } else if (b.id === "waSend") {
         var bad = null;
         if (!info.type) { bad = $("waType"); bad.classList.add("err"); }
-        else if (isDelivery(info.type) && !info.addr.trim()) { bad = waBody.querySelector('[data-f="addr"]'); bad.classList.add("err"); bad.focus(); }
+        else if (belowMin()) { bad = $("waMin"); }
+        // delivery needs a typed address or a location pin
+        else if (isDelivery(info.type) && !info.addr.trim() && !info.loc) { bad = waBody.querySelector('[data-f="addr"]'); bad.classList.add("err"); bad.focus(); }
         if (bad) { e.preventDefault(); bad.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
         b.href = waLink(orderText());              // the link then opens WhatsApp with the order typed out
       }

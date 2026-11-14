@@ -23,7 +23,7 @@ window.MENU = {
     orderTypes: ["Dine-in", "Pickup", "Delivery"],
     // Home delivery (used when the customer picks "Delivery")
     delivery: {
-      fee: null,      // delivery charge in SR.  null = "confirmed on WhatsApp",  0 = free delivery
+      fee: 30,        // delivery charge in SR.  null = "confirmed on WhatsApp",  0 = free delivery
       minOrder: 0,    // minimum order for delivery in SR (0 = no minimum)
       note: ""        // optional line shown to the customer, e.g. "We deliver inside Villagio compound only"
     },

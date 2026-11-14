@@ -53,6 +53,15 @@ and a note; **Send order on WhatsApp** opens WhatsApp with the whole order typed
 - Number and order types: `restaurant.whatsapp` and `restaurant.orderTypes` in `assets/js/menu-data.js`.
 - `https://barkadamenu.hizarc.com/#order` opens the order popup straight away (good for social media bios).
 - `https://barkadamenu.hizarc.com/?table=5` pre-selects Dine-in with table 5 (for per-table QR codes).
+- `https://barkadamenu.hizarc.com/?order=delivery` pre-selects Delivery (link for home orders).
+
+**Add-ons** ("Add to your order" row in the popup): the `extras` list in `assets/js/menu-data.js`.
+An extra is either a new item (`{ id: "x-water", name: "Water", price: 2, icon: "💧" }`) or a dish already
+on the menu (`{ ref: "iced-tea" }`). An extra with `price: null` stays hidden until its price is typed in.
+
+**Home delivery**: `restaurant.delivery` in the same file — `fee` (SR; `null` = "confirmed on WhatsApp",
+`0` = free), `minOrder` (SR) and an optional `note` shown to the customer. Delivery orders need an address
+or a location pin (**Share my location** adds a Google Maps link to the WhatsApp message).
 
 ## Rebuilding assets
 
