@@ -11,9 +11,13 @@
 
   var menuEl = $("menu"), chipsEl = $("chips"), barEl = $("bar"), q = $("q"), emptyEl = $("empty");
   var sheet = $("sheet"), sheetPanel = $("sheetPanel"), sheetBody = $("sheetBody");
+  var wa = $("wa"), waPanel = $("waPanel"), waBody = $("waBody");
+  var WA_ICON = '<svg aria-hidden="true" viewBox="0 0 24 24"><use href="#i-wa"/></svg>';
 
   // id -> { item, cat } lookup (combos included)
   var byId = Object.create(null);
+  // add-ons offered in the order popup: [{ id, s: size index or -1 }] (menu-data.js -> extras)
+  var EXTRAS = [];
 
   /* ---------- helpers ---------- */
   function esc(s) {
@@ -97,6 +101,19 @@
 
     menuEl.innerHTML = html.join("");
     chipsEl.innerHTML = chips.join("");
+
+    // Extras: either a dish already on the menu (ref) or a priced add-on of its own. No price yet -> hidden.
+    (M.extras || []).forEach(function (x) {
+      if (x.ref) {
+        var r = byId[x.ref];
+        if (!r || r.combo) return;
+        if (r.item.prices) r.item.prices.forEach(function (p, i) { EXTRAS.push({ id: x.ref, s: i }); });
+        else EXTRAS.push({ id: x.ref, s: -1 });
+      } else if (x.id && x.name && typeof x.price === "number" && !byId[x.id]) {
+        byId[x.id] = { item: x, extra: true };
+        EXTRAS.push({ id: x.id, s: -1 });
+      }
+    });
 
     // Highlights (featured on the printed cover)
     var hl = ["pineapple-juice", "halo-halo", "iced-tea"];
@@ -214,11 +231,19 @@
   }
 
   /* ---------- detail sheet ---------- */
+  var shQty = 1, shSize = 0;
+  function orderRow(price) {
+    return '<div class="order"><div class="qty qty--lg">' +
+      '<button type="button" data-sq="-1" aria-label="One less">&minus;</button><span id="shQty">1</span>' +
+      '<button type="button" data-sq="1" aria-label="One more">+</button></div>' +
+      '<button class="btn btn--add" type="button" data-add>Add to order &middot; <span id="shSum">' + price + " " + CUR + "</span></button></div>";
+  }
   function sheetHTML(id) {
     var ref = byId[id];
     var it = ref.item;
-    var call = '<a class="btn btn--call" href="tel:' + M.restaurant.phone + '">Call to order</a>';
+    var call = '<a class="btn btn--ghost" href="tel:' + M.restaurant.phone + '">Call us</a>';
     var share = (navigator.share ? '<button class="btn btn--ghost" type="button" data-share>Share</button>' : "");
+    call = orderRow(it.prices ? it.prices[0].price : it.price) + '<div class="sh__actions">' + call;
     if (ref.combo) {
       return '<div class="sh__img wide">' + img(it.img, "(min-width: 600px) 560px, 100vw", { eager: true, alt: it.name }) + "</div>" +
         '<div class="sh__body"><p class="sh__cat">Barkada Combo</p><h2 class="sh__name" id="sheetTitle">' + esc(it.name) + "</h2>" +
@@ -228,12 +253,13 @@
         it.dishes.map(function (d) { return "<li>" + esc(d) + "</li>"; }).join("") + "</ul>" +
         '<p class="sh__h">Free with every combo</p><div class="freebies">' +
         M.comboFreebies.map(function (f) { return "<span>" + esc(f) + "</span>"; }).join("") + "</div>" +
-        '<div class="sh__actions">' + call + share + "</div></div>";
+        call + share + "</div></div>";
     }
     var cal = calText(it);
     var price = it.prices
-      ? '<div class="sizes">' + it.prices.map(function (p) {
-          return '<div class="size"><span>' + esc(p.label) + '</span><span class="price">' + p.price + " <small>" + CUR + "</small></span></div>";
+      ? '<div class="sizes" role="radiogroup" aria-label="Choose size">' + it.prices.map(function (p, i) {
+          return '<button class="size" type="button" role="radio" data-size="' + i + '" aria-checked="' + (i === 0) + '">' +
+            '<span class="size__l">' + esc(p.label) + '</span><span class="price">' + p.price + " <small>" + CUR + "</small></span></button>";
         }).join("") + "</div>" + (cal ? '<div class="sh__row"><span class="sh__cal">' + cal + "</span></div>" : "")
       : '<div class="sh__row"><span class="sh__price">' + it.price + " <small>" + CUR + "</small></span>" +
         (cal ? '<span class="sh__cal">' + cal + "</span>" : "") + "</div>";
@@ -241,33 +267,42 @@
       '<div class="sh__body"><p class="sh__cat">' + esc(ref.cat.name) + "</p>" +
       '<h2 class="sh__name" id="sheetTitle">' + esc(it.name) + "</h2>" +
       '<p class="sh__desc">' + esc(it.desc) + "</p>" + price +
-      '<div class="sh__actions">' + call + share + "</div></div>";
+      call + share + "</div></div>";
+  }
+
+  /* dialogs (item sheet + WhatsApp order) share the slide-up animation */
+  function dlgShow(d, panel) {
+    clearTimeout(d._t);
+    d.classList.remove("closing");
+    panel.style.transform = "";
+    if (!d.open) { if (d.showModal) d.showModal(); else d.setAttribute("open", ""); }
+    root.classList.add("lock");
+  }
+  function dlgHide(d, panel) {
+    if (!d.open || d.classList.contains("closing")) return;
+    d.classList.add("closing");
+    d._t = setTimeout(function () {
+      d.classList.remove("closing");
+      if (d.close) d.close(); else d.removeAttribute("open");
+      panel.style.transform = "";
+      if (!sheet.open && !wa.open) root.classList.remove("lock");
+    }, 200);
   }
 
   var openId = null;
   function showSheet(id) {
-    if (!byId[id]) return false;
+    if (!byId[id] || byId[id].extra) return false;   // extras have no detail page
     openId = id;
+    shQty = 1; shSize = 0;
     sheetBody.innerHTML = sheetHTML(id);
     sheetPanel.scrollTop = 0;
-    sheetPanel.style.transform = "";
-    sheet.classList.remove("closing");
-    if (!sheet.open) {
-      if (sheet.showModal) sheet.showModal(); else sheet.setAttribute("open", "");
-      root.classList.add("lock");
-    }
+    dlgShow(sheet, sheetPanel);
     return true;
   }
   function hideSheetUI() {
     if (!sheet.open) return;
     openId = null;
-    sheet.classList.add("closing");
-    setTimeout(function () {
-      sheet.classList.remove("closing");
-      if (sheet.close) sheet.close(); else sheet.removeAttribute("open");
-      root.classList.remove("lock");
-      sheetPanel.style.transform = "";
-    }, 200);
+    dlgHide(sheet, sheetPanel);
   }
   function openItem(id) {
     if (showSheet(id)) history.pushState({ sheet: id }, "", "#" + id);
@@ -288,41 +323,277 @@
     sheet.addEventListener("click", function (e) { if (e.target === sheet) closeSheet(); });
     sheet.addEventListener("cancel", function (e) { e.preventDefault(); closeSheet(); });
     sheetBody.addEventListener("click", function (e) {
-      if (!e.target.closest("[data-share]") || !openId) return;
-      var it = byId[openId].item;
-      navigator.share({ title: it.name + " — " + M.restaurant.name, url: location.origin + location.pathname + "#" + openId }).catch(function () {});
+      if (!openId) return;
+      var id = openId, it = byId[id].item, b;
+      if (e.target.closest("[data-share]")) {
+        navigator.share({ title: it.name + " — " + M.restaurant.name, url: location.origin + location.pathname + "#" + id }).catch(function () {});
+      } else if ((b = e.target.closest("[data-size]"))) {
+        shSize = +b.getAttribute("data-size");
+        sheetBody.querySelectorAll("[data-size]").forEach(function (x) { x.setAttribute("aria-checked", x === b); });
+        sheetSum(it);
+      } else if ((b = e.target.closest("[data-sq]"))) {
+        shQty = Math.max(1, Math.min(99, shQty + +b.getAttribute("data-sq")));
+        $("shQty").textContent = shQty;
+        sheetSum(it);
+      } else if ((b = e.target.closest("[data-add]")) && !b.disabled) {
+        addToCart(id, it.prices ? shSize : -1, shQty);
+        b.disabled = true;
+        b.classList.add("is-done");
+        b.innerHTML = "&#10003; Added to your order";
+        setTimeout(function () {
+          if (sheet.open && openId === id) closeSheet();
+          addedTip();
+        }, 600);
+      }
     });
     window.addEventListener("popstate", function (e) {
-      var id = e.state && e.state.sheet;
-      if (id) showSheet(id); else hideSheetUI();
+      var st = e.state || {};
+      if (st.sheet) showSheet(st.sheet); else hideSheetUI();
+      if (st.wa) showWa(); else dlgHide(wa, waPanel);
     });
 
-    // swipe down to close (when scrolled to top)
+    swipeToClose(sheetPanel, closeSheet);
+
+    // deep links: /#bulalo opens that dish, /#order opens the WhatsApp order (Back returns to the menu)
+    var h = decodeURIComponent(location.hash.slice(1));
+    if (h && (byId[h] || h === "order")) {
+      history.replaceState(null, "", location.pathname + location.search);
+      if (h === "order") openWa(); else openItem(h);
+    }
+  }
+  function sheetSum(it) {
+    var p = it.prices ? it.prices[shSize].price : it.price;
+    $("shSum").textContent = p * shQty + " " + CUR;
+  }
+
+  // swipe down to close (when scrolled to the top)
+  function swipeToClose(panel, close) {
     var y0 = null, dy = 0;
-    sheetPanel.addEventListener("touchstart", function (e) {
-      if (sheetPanel.scrollTop > 0) { y0 = null; return; }
+    panel.addEventListener("touchstart", function (e) {
+      if (panel.scrollTop > 0 || e.target.closest("input, textarea, .xts")) { y0 = null; return; }
       y0 = e.touches[0].clientY; dy = 0;
-      sheetPanel.style.transition = "none";
+      panel.style.transition = "none";
     }, { passive: true });
-    sheetPanel.addEventListener("touchmove", function (e) {
+    panel.addEventListener("touchmove", function (e) {
       if (y0 === null) return;
       dy = e.touches[0].clientY - y0;
-      if (dy > 0) sheetPanel.style.transform = "translateY(" + dy + "px)";
+      if (dy > 0) panel.style.transform = "translateY(" + dy + "px)";
     }, { passive: true });
-    sheetPanel.addEventListener("touchend", function () {
+    panel.addEventListener("touchend", function () {
       if (y0 === null) return;
       y0 = null;
-      sheetPanel.style.transition = "transform .2s ease";
-      if (dy > 110) { sheetPanel.style.transform = "translateY(100%)"; closeSheet(); }
-      else sheetPanel.style.transform = "";
+      panel.style.transition = "transform .2s ease";
+      if (dy > 110) { panel.style.transform = "translateY(100%)"; close(); }
+      else panel.style.transform = "";
+    });
+  }
+
+  /* ---------- order basket + WhatsApp order ---------- */
+  var R = M.restaurant;
+  var WA_NUM = String(R.whatsapp || "").replace(/\D/g, "");
+  var TYPES = R.orderTypes || ["Dine-in", "Pickup", "Delivery"];
+  var fab = $("waFab"), fabTxt = $("waFabTxt"), tip = $("waTip"), tipTimer = 0;
+  var cart = [];                                   // [{ id, s: size index or -1, n: quantity }]
+  var info = { type: "", name: "", table: "", addr: "", note: "" };
+  var isDine = function (t) { return /dine/i.test(t); };
+  var isDelivery = function (t) { return /deliver/i.test(t); };
+
+  function store(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+  function restore(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+
+  function unit(l) {
+    var it = byId[l.id].item, p = it.prices && it.prices[l.s];
+    return { name: it.name, size: p ? p.label : "", price: p ? p.price : it.price };
+  }
+  function totals() {
+    var n = 0, sum = 0;
+    cart.forEach(function (l) { n += l.n; sum += l.n * unit(l).price; });
+    return { n: n, sum: sum };
+  }
+  function saveCart() { store("bh-cart", cart); updateFab(); }
+  function updateFab() {
+    var t = totals();
+    fab.classList.toggle("has", t.n > 0);
+    fabTxt.textContent = t.n ? t.n + (t.n > 1 ? " items · " : " item · ") + t.sum + " " + CUR : "";
+    fab.setAttribute("aria-label", t.n ? "Your order, " + fabTxt.textContent + ". Send on WhatsApp" : "Order on WhatsApp");
+  }
+  function addToCart(id, s, n) {
+    var l = null;
+    for (var i = 0; i < cart.length; i++) if (cart[i].id === id && cart[i].s === s) l = cart[i];
+    if (l) l.n = Math.min(99, l.n + n); else cart.push({ id: id, s: s, n: n });
+    saveCart();
+    fab.classList.remove("bump");
+    void fab.offsetWidth;                          // restart the animation
+    fab.classList.add("bump");
+  }
+
+  function waLink(text) { return "https://wa.me/" + WA_NUM + (text ? "?text=" + encodeURIComponent(text) : ""); }
+  function orderText() {
+    var out = ["Hi " + R.name + "! 👋 I'd like to order:", ""];
+    cart.forEach(function (l) {
+      var u = unit(l);
+      out.push(l.n + " × " + u.name + (u.size ? " (" + u.size + ")" : "") + " — " + l.n * u.price + " " + CUR);
+    });
+    out.push("", "*Total: " + totals().sum + " " + CUR + "*", "", "*Order type:* " + info.type);
+    if (isDine(info.type) && info.table.trim()) out.push("*Table:* " + info.table.trim());
+    if (isDelivery(info.type) && info.addr.trim()) out.push("*Address:* " + info.addr.trim());
+    if (info.name.trim()) out.push("*Name:* " + info.name.trim());
+    if (info.note.trim()) out.push("*Note:* " + info.note.trim());
+    return out.join("\n");
+  }
+
+  function linesHTML() {
+    return cart.map(function (l, i) {
+      var u = unit(l), it = byId[l.id].item;
+      return '<li><div class="wl__img">' + img(it.img, "48px") + "</div>" +
+        '<div class="wl__n"><b>' + esc(u.name) + "</b>" + (u.size ? "<span>" + esc(u.size) + "</span>" : "") + "</div>" +
+        '<div class="qty"><button type="button" data-i="' + i + '" data-d="-1" aria-label="One less ' + esc(u.name) + '">&minus;</button>' +
+        "<span>" + l.n + '</span><button type="button" data-i="' + i + '" data-d="1" aria-label="One more ' + esc(u.name) + '">+</button></div>' +
+        '<b class="wl__p">' + l.n * u.price + " <small>" + CUR + "</small></b></li>";
+    }).join("");
+  }
+  function field(k, label, attrs, show) {
+    var v = esc(info[k] || "");
+    var tag = /rows=/.test(attrs) ? '<textarea data-f="' + k + '" ' + attrs + ">" + v + "</textarea>"
+      : '<input type="text" data-f="' + k + '" value="' + v + '" ' + attrs + ">";
+    return '<label class="fld"' + (show ? ' data-show="' + show + '"' : "") + "><span>" + label + "</span>" + tag + "</label>";
+  }
+  function renderWa() {
+    var t = totals();
+    if (!t.n) {
+      waBody.innerHTML =
+        '<div class="bubble">Mabuhay! 👋 Welcome to <b>' + esc(R.name) + "</b>.</div>" +
+        '<div class="bubble">Tap <b>Add to order</b> on any dish to build your order, then send it to us here on WhatsApp. 🍲</div>' +
+        '<div class="wa__btns"><button class="btn btn--ghost" type="button" data-wa-close>Browse the menu</button>' +
+        '<a class="btn btn--wa" href="' + esc(waLink("Hi " + R.name + "! 👋 I'd like to place an order.")) +
+        '" target="_blank" rel="noopener">' + WA_ICON + " Chat with us</a></div>";
+      return;
+    }
+    waBody.innerHTML =
+      '<div class="wa__card"><p class="wa__h">Your order</p><ul class="wl" id="waLines">' + linesHTML() + "</ul>" +
+      '<div class="wa__total"><span>Total</span><b id="waTotal">' + t.sum + " <small>" + CUR + "</small></b></div></div>" +
+      '<div class="wa__card"><p class="wa__h">Order type</p><div class="seg" id="waType" role="radiogroup" aria-label="Order type">' +
+      TYPES.map(function (ty) {
+        return '<button type="button" role="radio" data-type="' + esc(ty) + '" aria-checked="' + (ty === info.type) + '">' + esc(ty) + "</button>";
+      }).join("") + "</div>" +
+      field("table", "Table number", 'inputmode="numeric" placeholder="e.g. 5"', "dine") +
+      field("addr", "Delivery address", 'rows="2" placeholder="Building, street, area or location pin"', "delivery") +
+      field("name", "Your name", 'autocomplete="name" placeholder="Optional"') +
+      field("note", "Note for the kitchen", 'rows="2" placeholder="Optional, e.g. less spicy"') + "</div>" +
+      '<a class="btn btn--wa btn--send" id="waSend" href="' + waLink() + '" target="_blank" rel="noopener">' + WA_ICON + " Send order on WhatsApp</a>" +
+      '<p class="wa__fine">WhatsApp opens with your order typed out. Just tap <b>Send</b>.</p>' +
+      '<button class="wa__clear" type="button" data-wa-clear>Clear order</button>';
+    syncType();
+  }
+  function syncType() {
+    waBody.classList.toggle("t-dine", isDine(info.type));
+    waBody.classList.toggle("t-delivery", isDelivery(info.type));
+    waBody.querySelectorAll("[data-type]").forEach(function (b) { b.setAttribute("aria-checked", b.getAttribute("data-type") === info.type); });
+  }
+  function saveInfo() { store("bh-info", { name: info.name, type: info.type, addr: info.addr }); }
+
+  function showWa() { renderWa(); waPanel.scrollTop = 0; hideTip(); dlgShow(wa, waPanel); }
+  function openWa() {
+    if (wa.open) return;
+    showWa();
+    history.pushState({ wa: 1 }, "", "#order");
+  }
+  function closeWa() {
+    if (history.state && history.state.wa) history.back();
+    else { dlgHide(wa, waPanel); history.replaceState(null, "", location.pathname + location.search); }
+  }
+
+  function showTip(html, ms) {
+    $("waTipTxt").innerHTML = html;
+    tip.hidden = false;
+    clearTimeout(tipTimer);
+    tipTimer = setTimeout(hideTip, ms);
+  }
+  function hideTip() { tip.hidden = true; clearTimeout(tipTimer); }
+  function once(key) {
+    try { if (sessionStorage.getItem(key)) return false; sessionStorage.setItem(key, "1"); } catch (e) {}
+    return true;
+  }
+  function addedTip() {
+    if (once("bh-tip-added")) showTip("<b>Added to your order &#10003;</b>Tap the green button when you are ready to send it.", 6000);
+  }
+
+  function initOrder() {
+    if (!WA_NUM) { root.classList.add("no-wa"); return; }
+    (restore("bh-cart") || []).forEach(function (l) {
+      var ref = l && byId[l.id];
+      if (!ref) return;
+      var ok = ref.item.prices ? !!ref.item.prices[l.s] : l.s === -1;
+      if (ok && l.n > 0) cart.push({ id: l.id, s: l.s, n: Math.min(99, l.n | 0) });
+    });
+    var saved = restore("bh-info") || {};
+    info.name = saved.name || "";
+    info.addr = saved.addr || "";
+    info.type = TYPES.indexOf(saved.type) !== -1 ? saved.type : "";
+    var tm = /[?&]table=([^&#]+)/.exec(location.search);  // table QR codes: ?table=5
+    if (tm) {
+      info.table = decodeURIComponent(tm[1]);
+      info.type = TYPES.filter(isDine)[0] || info.type;
+    }
+    updateFab();
+
+    doc.addEventListener("click", function (e) {
+      var a = e.target.closest("[data-wa-open]");
+      if (!a) return;
+      e.preventDefault();
+      openWa();
+    });
+    $("waClose").addEventListener("click", closeWa);
+    wa.addEventListener("click", function (e) { if (e.target === wa) closeWa(); });
+    wa.addEventListener("cancel", function (e) { e.preventDefault(); closeWa(); });
+    swipeToClose(waPanel, closeWa);
+
+    waBody.addEventListener("click", function (e) {
+      var b = e.target.closest("button, a");
+      if (!b) return;
+      if (b.hasAttribute("data-d")) {
+        var l = cart[+b.getAttribute("data-i")];
+        if (!l) return;
+        l.n = Math.min(99, l.n + +b.getAttribute("data-d"));
+        if (l.n <= 0) cart.splice(cart.indexOf(l), 1);
+        saveCart();
+        if (!cart.length) renderWa();
+        else { $("waLines").innerHTML = linesHTML(); $("waTotal").innerHTML = totals().sum + " <small>" + CUR + "</small>"; }
+      } else if (b.hasAttribute("data-type")) {
+        info.type = b.getAttribute("data-type");
+        $("waType").classList.remove("err");
+        syncType();
+        saveInfo();
+      } else if (b.hasAttribute("data-wa-clear")) {
+        cart = [];
+        saveCart();
+        renderWa();
+      } else if (b.hasAttribute("data-wa-close")) {
+        closeWa();
+      } else if (b.id === "waSend") {
+        var bad = null;
+        if (!info.type) { bad = $("waType"); bad.classList.add("err"); }
+        else if (isDelivery(info.type) && !info.addr.trim()) { bad = waBody.querySelector('[data-f="addr"]'); bad.classList.add("err"); bad.focus(); }
+        if (bad) { e.preventDefault(); bad.scrollIntoView({ block: "center", behavior: "smooth" }); return; }
+        b.href = waLink(orderText());              // the link then opens WhatsApp with the order typed out
+      }
+    });
+    waBody.addEventListener("input", function (e) {
+      var k = e.target.getAttribute("data-f");
+      if (!k) return;
+      info[k] = e.target.value;
+      e.target.classList.remove("err");
+      if (k !== "note" && k !== "table") saveInfo();
     });
 
-    // deep link: /#bulalo opens that dish (Back returns to the menu)
-    var h = decodeURIComponent(location.hash.slice(1));
-    if (h && byId[h]) {
-      history.replaceState(null, "", location.pathname + location.search);
-      openItem(h);
-    }
+    $("waTipX").addEventListener("click", function (e) { e.stopPropagation(); hideTip(); });
+    tip.addEventListener("click", function () { hideTip(); openWa(); });
+    // a gentle hint, once per visit
+    setTimeout(function () {
+      if (!cart.length && !sheet.open && !wa.open && once("bh-tip")) {
+        showTip("<b>Order on WhatsApp</b>Add dishes to your order, then send it to us in one tap.", 9000);
+      }
+    }, 5000);
   }
 
   /* ---------- boot ---------- */
@@ -331,7 +602,11 @@
   initSpy();
   initSearch();
   initView();
+  initOrder();
   initSheet();
+  // keep the floating WhatsApp button out of the way while typing a search
+  q.addEventListener("focus", function () { root.classList.add("typing"); });
+  q.addEventListener("blur", function () { root.classList.remove("typing"); });
   window.addEventListener("resize", syncBar, { passive: true });
 
   if ("serviceWorker" in navigator && location.protocol === "https:") {

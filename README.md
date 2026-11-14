@@ -42,6 +42,17 @@ Each dish can be linked directly, e.g. `https://barkadamenu.hizarc.com/#bulalo`.
 
 Print files and the QR code: **https://barkadamenu.hizarc.com/qr/** (same site, no extra DNS record).
 Printable menu card (A4, A5, US Letter): **https://barkadamenu.hizarc.com/qr/menucard/**
+Visiting card (90 x 50 mm, front + back): **https://barkadamenu.hizarc.com/qr/visitingcard/**
+
+## WhatsApp ordering
+
+Guests tap **Add to order** on any dish (size + quantity), then the green WhatsApp button.
+The popup shows the order, total, order type (Dine-in / Pickup / Delivery), name, table or address
+and a note; **Send order on WhatsApp** opens WhatsApp with the whole order typed out.
+
+- Number and order types: `restaurant.whatsapp` and `restaurant.orderTypes` in `assets/js/menu-data.js`.
+- `https://barkadamenu.hizarc.com/#order` opens the order popup straight away (good for social media bios).
+- `https://barkadamenu.hizarc.com/?table=5` pre-selects Dine-in with table 5 (for per-table QR codes).
 
 ## Rebuilding assets
 
@@ -51,4 +62,5 @@ python tools/build_images.py   # menu photos -> assets/img/menu
 python tools/build_assets.py   # QR code, table card, icons, share image
 python tools/build_qr_poster.py   # A5 poster PDF/PNG (needs Chrome; fonts in tools/fonts, SIL OFL)
 python tools/build_menu_card.py   # menu card PDFs (A4, A5, US Letter) + previews + /qr/menucard/ page (needs Chrome + Node)
+python tools/build_visiting_card.py   # visiting card PDFs + PNGs + /qr/visitingcard/ page (needs Chrome + Node)
 ```

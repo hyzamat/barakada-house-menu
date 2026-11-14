@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Barkada House — Visiting Card</title>
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#D0AA2B">
+<link rel="icon" href="../../assets/img/icon-192.png" type="image/png">
+<style>
+  :root { --gold:#D0AA2B; --gold-lt:#F6EBC6; --brown:#392214; --red:#E61D25; --cream:#FBF7EE; --muted:#7A6656; --line:#EDE3CF; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; color: var(--brown); background: var(--cream); }
+  header { background: linear-gradient(180deg, #D8B337, var(--gold) 60%, #C79E22); color: #fff; text-align: center; padding: max(26px, env(safe-area-inset-top)) 20px 64px; }
+  .kick { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .18em; background: rgba(57,34,20,.18); padding: 5px 12px; border-radius: 99px; }
+  h1 { font: 900 clamp(34px, 11vw, 52px)/.95 "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .03em; margin-top: 10px; text-shadow: 0 3px 0 rgba(57,34,20,.18); }
+  header p { margin-top: 8px; font-weight: 600; }
+  main { max-width: 600px; margin: -44px auto 0; padding: 0 16px 40px; }
+  .cards { display: grid; gap: 14px; }
+  .cards figure { background: #fff; border-radius: 18px; padding: 10px; box-shadow: 0 14px 30px -16px rgba(57,34,20,.55); }
+  .cards img { display: block; width: 100%; height: auto; border-radius: 8px; }
+  figcaption { font-size: 12.5px; font-weight: 700; color: var(--muted); text-align: center; margin-top: 8px; letter-spacing: .06em; text-transform: uppercase; }
+  h2 { font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 26px 4px 10px; }
+  .list { display: grid; gap: 10px; }
+  .dl { display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit; background: #fff; border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+  .dl.main { background: var(--brown); color: #fff; border-color: var(--brown); }
+  .ic { flex: none; width: 44px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 900; font-size: 12px; background: var(--gold-lt); color: var(--brown); }
+  .dl.main .ic { background: var(--red); color: #fff; }
+  .t { font-weight: 800; } .d { font-size: 13px; color: var(--muted); } .dl.main .d { color: #E9DCCB; }
+  .ar { margin-left: auto; font-size: 20px; opacity: .6; }
+  .tips { background: #fff; border: 1.5px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .tips li { margin: 4px 0 4px 18px; }
+  .links { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 22px; }
+  .btn { display: flex; align-items: center; justify-content: center; height: 46px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 14px; }
+  .btn.red { background: var(--red); color: #fff; } .btn.ghost { background: #fff; color: var(--brown); border: 1.5px solid var(--line); }
+  footer { text-align: center; color: var(--muted); font-size: 12.5px; padding: 0 20px 30px; }
+</style>
+</head>
+<body>
+<header>
+  <span class="kick">VISITING CARD</span>
+  <h1>Barkada House</h1>
+  <p>Standard 90 × 50 mm · QR menu, call, WhatsApp &amp; location</p>
+</header>
+<main>
+  <div class="cards">
+    <figure><img src="front.webp" width="900" height="500" alt="Visiting card front"><figcaption>Front</figcaption></figure>
+    <figure><img src="back.webp" width="900" height="500" alt="Visiting card back with QR code, phone, WhatsApp and address"><figcaption>Back</figcaption></figure>
+  </div>
+  <h2>Download</h2>
+  <div class="list">
+    <a class="dl main" href="barkada-house-visiting-card-print.pdf" download>
+      <span class="ic">PDF</span>
+      <span><span class="t">For the print shop</span><br><span class="d">Front + back · 90 × 50 mm with 3 mm bleed · 386 KB</span></span>
+      <span class="ar">↓</span>
+    </a>
+    <a class="dl" href="barkada-house-visiting-cards-A4.pdf" download>
+      <span class="ic">A4</span>
+      <span><span class="t">Print at home — 10 per sheet</span><br><span class="d">A4 · front sheet + back sheet · crop marks · 1.3 MB</span></span>
+      <span class="ar">↓</span>
+    </a>
+    <a class="dl" href="barkada-house-visiting-card-front.png" download>
+      <span class="ic">PNG</span>
+      <span><span class="t">Front — image</span><br><span class="d">For WhatsApp, Instagram, status</span></span>
+      <span class="ar">↓</span>
+    </a>
+    <a class="dl" href="barkada-house-visiting-card-back.png" download>
+      <span class="ic">PNG</span>
+      <span><span class="t">Back — image (with QR)</span><br><span class="d">Customers can scan it straight from the screen</span></span>
+      <span class="ar">↓</span>
+    </a>
+  </div>
+  <h2>Printing tips</h2>
+  <ul class="tips">
+    <li><b>Print shop:</b> send the print-shop PDF and ask for <b>90 × 50 mm</b>, double-sided, 350 gsm (matte or soft-touch looks best).</li>
+    <li><b>At home:</b> print the A4 file double-sided at <b>100% / Actual size</b> on thick card (250–300 gsm), then cut along the marks.</li>
+    <li>Scan the QR on one printed card with your phone before printing many.</li>
+  </ul>
+  <div class="links"><a class="btn red" href="../../">Digital menu →</a><a class="btn ghost" href="../">QR code &amp; poster</a></div>
+</main>
+<footer>The QR opens <b>barkadamenu.hizarc.com</b></footer>
+</body>
+</html>
