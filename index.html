@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Barkada House — Menu</title>
+<meta name="description" content="Barkada House digital menu — authentic Filipino food, Barkada Combos, sizzling plates, soups, noodles, drinks and desserts. Villagio Building No. 2, Gate #6.">
+<meta name="theme-color" content="#D0AA2B">
+<link rel="canonical" href="https://barakadamnu.hizarc.com/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Barkada House — Menu">
+<meta property="og:description" content="Authentic Filipino food. Scan, browse and order.">
+<meta property="og:url" content="https://barakadamnu.hizarc.com/">
+<meta property="og:image" content="https://barakadamnu.hizarc.com/assets/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/img/icon-192.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="assets/css/style.css">
+<script defer src="assets/js/menu-data.js"></script>
+<script defer src="assets/js/app.js"></script>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero__inner">
+    <p class="hero__kicker">Authentic Filipino Food</p>
+    <h1 class="logo">Barkada<br>House</h1>
+    <p class="hero__addr">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
+      Villagio Building No. 2 · Gate #6
+    </p>
+    <a class="btn-call" href="tel:0535627615">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6.6 10.8a15.1 15.1 0 0 0 6.6 6.6l2.2-2.2a1 1 0 0 1 1-.25 11.4 11.4 0 0 0 3.6.57 1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A17 17 0 0 1 3 4a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.25.2 2.45.57 3.57a1 1 0 0 1-.25 1z"/></svg>
+      053 562 7615
+    </a>
+  </div>
+  <div class="highlights" id="highlights" aria-label="Highlights"></div>
+</header>
+
+<nav class="bar" id="bar" aria-label="Menu categories">
+  <div class="bar__search">
+    <label class="search">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 2a8 8 0 0 1 6.3 12.9l5.4 5.4-1.4 1.4-5.4-5.4A8 8 0 1 1 10 2zm0 2a6 6 0 1 0 0 12 6 6 0 0 0 0-12z"/></svg>
+      <input id="q" type="search" placeholder="Search dishes…" autocomplete="off" enterkeyhint="search" aria-label="Search dishes">
+    </label>
+    <button class="view-toggle" id="viewToggle" type="button" aria-label="Switch to list view" title="Grid / list">
+      <svg class="i-grid" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 3h8v8H3zm10 0h8v8h-8zM3 13h8v8H3zm10 0h8v8h-8z"/></svg>
+      <svg class="i-list" aria-hidden="true" viewBox="0 0 24 24"><path d="M3 4h5v5H3zm7 1h11v3H10zM3 10h5v5H3zm7 1h11v3H10zm-7 5h5v5H3zm7 1h11v3H10z"/></svg>
+    </button>
+  </div>
+  <div class="chips" id="chips"></div>
+</nav>
+
+<main id="menu" class="menu">
+  <noscript><p class="empty">Please enable JavaScript to view the menu.</p></noscript>
+</main>
+
+<p class="empty" id="empty" hidden>No dishes found. Try another name.</p>
+
+<footer class="foot">
+  <p class="foot__name">Barkada House</p>
+  <p>Villagio Building No. 2 · Gate #6</p>
+  <p><a href="tel:0535627615">Mob. 053 562 7615</a></p>
+  <p class="foot__note">All prices in Saudi Riyal (SR). Calories as listed on our printed menu. Photos are for illustration.</p>
+</footer>
+
+<dialog class="sheet" id="sheet" aria-labelledby="sheetTitle">
+  <div class="sheet__panel" id="sheetPanel">
+    <button class="sheet__close" id="sheetClose" type="button" aria-label="Close">
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z"/></svg>
+    </button>
+    <div class="sheet__grip" aria-hidden="true"></div>
+    <div id="sheetBody"></div>
+  </div>
+</dialog>
+
+</body>
+</html>

@@ -1,0 +1,8 @@
+# Full-size source photos (optimized copies live in assets/img/menu)
+Menu Item IMage/
+
+# OS / editor
+Thumbs.db
+.DS_Store
+__pycache__/
+.claude/
