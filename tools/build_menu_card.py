@@ -32,7 +32,7 @@ from PIL import Image  # noqa: E402
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "qr", "menucard")
 IMG_TMP = os.path.join(tempfile.gettempdir(), "bh-menucard-img")
-SITE = "barakadamenu.hizarc.com"
+SITE = "barkadamenu.hizarc.com"
 ADDRESS = "Villagio Building No. 2 · Gate #6"
 PHONE = "053 562 7615"
 

@@ -1,6 +1,6 @@
 # Barkada House — QR Menu
 
-Mobile-first digital menu for Barkada House, live at **https://barakadamenu.hizarc.com/**.
+Mobile-first digital menu for Barkada House, live at **https://barkadamenu.hizarc.com/**.
 Plain HTML/CSS/JS (no frameworks, no build step needed to deploy), ~14 KB of gzipped code plus lazy-loaded WebP photos.
 
 ## What's in here
@@ -23,12 +23,12 @@ Plain HTML/CSS/JS (no frameworks, no build step needed to deploy), ~14 KB of gzi
 
 1. Create a GitHub repository and push this folder to the `main` branch.
 2. Repository **Settings → Pages → Build and deployment**: Source = *Deploy from a branch*, Branch = `main`, folder `/ (root)`.
-3. Custom domain: `barakadamenu.hizarc.com` (already set by the `CNAME` file).
+3. Custom domain: `barkadamenu.hizarc.com` (already set by the `CNAME` file).
 4. At the DNS provider for `hizarc.com`, add a record:
-   `CNAME   barakadamenu   <your-github-username>.github.io`
+   `CNAME   barkadamenu   <your-github-username>.github.io`
 5. Once the DNS check passes in Settings → Pages, tick **Enforce HTTPS**.
 
-The QR code points to `https://barakadamenu.hizarc.com/` and will work as soon as the site is live there.
+The QR code points to `https://barkadamenu.hizarc.com/` and will work as soon as the site is live there.
 
 ## Changing the menu
 
@@ -38,10 +38,10 @@ The QR code points to `https://barakadamenu.hizarc.com/` and will work as soon a
   `tools/build_images.py`, run `python tools/build_images.py`, then add the item in `menu-data.js` with `img: "slug"`.
 - **Replaced a photo but kept the same slug?** Change `VERSION` in `sw.js` (e.g. `bh-v2`) so phones fetch the new one.
 
-Each dish can be linked directly, e.g. `https://barakadamenu.hizarc.com/#bulalo`.
+Each dish can be linked directly, e.g. `https://barkadamenu.hizarc.com/#bulalo`.
 
-Print files and the QR code: **https://barakadamenu.hizarc.com/qr/** (same site, no extra DNS record).
-Printable menu card (A4, A5, US Letter): **https://barakadamenu.hizarc.com/qr/menucard/**
+Print files and the QR code: **https://barkadamenu.hizarc.com/qr/** (same site, no extra DNS record).
+Printable menu card (A4, A5, US Letter): **https://barkadamenu.hizarc.com/qr/menucard/**
 
 ## Rebuilding assets
 

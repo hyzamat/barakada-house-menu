@@ -18,8 +18,8 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOOLS = os.path.join(ROOT, "tools")
 OUT_PDF = os.path.join(ROOT, "qr", "barkada-house-qr-poster-A5.pdf")
 OUT_PNG = os.path.join(ROOT, "qr", "barkada-house-qr-poster-A5.png")
-URL = "https://barakadamenu.hizarc.com/"
-SHOWN_URL = "barakadamenu.hizarc.com"
+URL = "https://barkadamenu.hizarc.com/"
+SHOWN_URL = "barkadamenu.hizarc.com"
 
 BROWSERS = [  # Chrome first: headless Edge silently skips --print-to-pdf on some PCs
     r"C:\Program Files\Google\Chrome\Application\chrome.exe",

@@ -11,7 +11,7 @@ import qrcode.image.svg
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-URL = "https://barakadamenu.hizarc.com/"
+URL = "https://barkadamenu.hizarc.com/"
 SRC_DIR = os.path.join(ROOT, "Menu Item IMage")
 IMG_DIR = os.path.join(ROOT, "assets", "img")
 QR_DIR = os.path.join(ROOT, "qr")
