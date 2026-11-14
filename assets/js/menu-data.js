@@ -21,6 +21,8 @@ window.MENU = {
     whatsapp: "966535627615",
     // Order types the customer can pick in the WhatsApp order popup
     orderTypes: ["Pickup", "Delivery"],
+    // Order type that is already selected when the order popup opens
+    defaultOrderType: "Delivery",
     // Home delivery (used when the customer picks "Delivery")
     delivery: {
       fee: 30,        // delivery charge in SR.  null = "confirmed on WhatsApp",  0 = free delivery

@@ -685,7 +685,8 @@
     var saved = restore("bh-info") || {};
     info.name = saved.name || "";
     info.addr = saved.addr || "";
-    info.type = TYPES.indexOf(saved.type) !== -1 ? saved.type : "";
+    // every visit starts on the default order type (Delivery); a link with ?order=pickup can override it
+    info.type = TYPES.indexOf(R.defaultOrderType) !== -1 ? R.defaultOrderType : "";
     var tm = /[?&]table=([^&#]+)/.exec(location.search);  // table QR codes: ?table=5
     if (tm) {
       info.table = decodeURIComponent(tm[1]);
