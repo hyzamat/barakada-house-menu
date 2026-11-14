@@ -8,3 +8,4 @@ __pycache__/
 .claude/
 tools/_qr_poster_build.html
 tools/_menu_card_build.html
+tools/_menu_card_build_*.html

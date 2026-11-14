@@ -33,7 +33,7 @@ The QR code points to `https://barakadamenu.hizarc.com/` and will work as soon a
 ## Changing the menu
 
 - **Price / name / description:** edit `assets/js/menu-data.js`, commit, push. Live in about a minute.
-  Then run `python tools/build_menu_card.py` so the printable menu card (PDF) matches.
+  Then run `python tools/build_menu_card.py` so the printable menu cards (PDFs) match.
 - **New dish:** put the photo in `Menu Item IMage/`, add `"slug": "file name.jpg"` to `SOURCES` in
   `tools/build_images.py`, run `python tools/build_images.py`, then add the item in `menu-data.js` with `img: "slug"`.
 - **Replaced a photo but kept the same slug?** Change `VERSION` in `sw.js` (e.g. `bh-v2`) so phones fetch the new one.
@@ -41,7 +41,7 @@ The QR code points to `https://barakadamenu.hizarc.com/` and will work as soon a
 Each dish can be linked directly, e.g. `https://barakadamenu.hizarc.com/#bulalo`.
 
 Print files and the QR code: **https://barakadamenu.hizarc.com/qr/** (same site, no extra DNS record).
-Printable A4 menu card: **https://barakadamenu.hizarc.com/qr/menucard/**
+Printable menu card (A4, A5, US Letter): **https://barakadamenu.hizarc.com/qr/menucard/**
 
 ## Rebuilding assets
 
@@ -50,5 +50,5 @@ pip install pillow "qrcode[pil]"
 python tools/build_images.py   # menu photos -> assets/img/menu
 python tools/build_assets.py   # QR code, table card, icons, share image
 python tools/build_qr_poster.py   # A5 poster PDF/PNG (needs Chrome; fonts in tools/fonts, SIL OFL)
-python tools/build_menu_card.py   # A4 menu card PDF + page previews + /qr/menucard/ page (needs Chrome + Node)
+python tools/build_menu_card.py   # menu card PDFs (A4, A5, US Letter) + previews + /qr/menucard/ page (needs Chrome + Node)
 ```

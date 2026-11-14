@@ -1,11 +1,17 @@
 """
-Builds the printable A4 menu card (booklet) from assets/js/menu-data.js:
-    qr/menucard/barkada-house-menu-card-A4.pdf
-    qr/menucard/page-01.webp ...   (previews)
-    qr/menucard/index.html         (web page: /qr/menucard/)
+Builds the printable menu card (booklet) from assets/js/menu-data.js in three sizes:
+    A4         210 x 297 mm
+    A5         148 x 210 mm   (single-column layout so text stays readable)
+    US Letter  8.5 x 11 in    (the standard menu size used by most print shops)
+
+Output (served at /qr/menucard/):
+    qr/menucard/barkada-house-menu-card-<size>.pdf
+    qr/menucard/<size>/page-01.webp ...      previews
+    qr/menucard/index.html                    download page
 
 Run from the project root after changing prices or dishes:
-    python tools/build_menu_card.py
+    python tools/build_menu_card.py            # all sizes
+    python tools/build_menu_card.py A5         # one size
 Needs Google Chrome (or Edge) and Node.js; pip install pillow qrcode pymupdf
 """
 import html as H
@@ -16,28 +22,43 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from string import Template
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from build_qr_poster import BROWSERS, DOODLES, TERRAZZO, font_face, qr_svg  # noqa: E402
+from build_qr_poster import BROWSERS, DOODLES, font_face, qr_svg  # noqa: E402
 
 from PIL import Image  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT_DIR = os.path.join(ROOT, "qr", "menucard")
-PDF_NAME = "barkada-house-menu-card-A4.pdf"
 IMG_TMP = os.path.join(tempfile.gettempdir(), "bh-menucard-img")
 SITE = "barakadamenu.hizarc.com"
+ADDRESS = "Villagio Building No. 2 · Gate #6"
+PHONE = "053 562 7615"
 
-# layout (mm) for list pages — fixed sizes so pagination is exact
-CONTENT_H = 252
-CAT_HEAD = 18
-ROW = 24
-GAP = 2.5
-AFTER = 5
-CAPACITY = CONTENT_H + AFTER          # the last block on a page doesn't need its bottom spacing
+# All sizes in mm / pt.  CONTENT_H is derived: H - (band + gap) - foot - pad
+FORMATS = {
+    "A4": dict(label="A4", size="210 × 297 mm", file="barkada-house-menu-card-A4.pdf", W=210, H=297,
+               side=12, band=15, foot=11, gap=7, pad=12, cols=2, row=24, ph=22, clamp=4, head=18,
+               sp_cols=4, sp_rows=3, cb_cols=2, cb_rows=5, free_h=15, cb_li=7.6,
+               promo_img=40, feast_w=70, qr_promo=40, promo_h3=19, promo_max=64, cover_bar=18,
+               brand_pt=15, sect_pt=7.5, foot_pt=7.8, h2_pt=21, list_px=300, use_plan=True),
+    "A5": dict(label="A5", size="148 × 210 mm", file="barkada-house-menu-card-A5.pdf", W=148, H=210,
+               side=9, band=12, foot=9, gap=6, pad=8, cols=1, row=19, ph=17, clamp=2, head=16,
+               sp_cols=2, sp_rows=2, cb_cols=1, cb_rows=4, free_h=19, cb_li=7.0,
+               promo_img=28, feast_w=46, qr_promo=32, promo_h3=15, promo_max=50, cover_bar=14,
+               brand_pt=12, sect_pt=6, foot_pt=6.5, h2_pt=18, list_px=240, use_plan=False),
+    "Letter": dict(label="US Letter (standard)", size="8.5 × 11 in", file="barkada-house-menu-card-US-Letter.pdf",
+                   W=215.9, H=279.4, side=12, band=15, foot=11, gap=7, pad=12, cols=2, row=24, ph=22, clamp=4,
+                   head=18, sp_cols=4, sp_rows=3, cb_cols=2, cb_rows=5, free_h=15, cb_li=7.6,
+                   promo_img=40, feast_w=70, qr_promo=40, promo_h3=19, promo_max=64, cover_bar=18,
+                   brand_pt=15, sect_pt=7.5, foot_pt=7.8, h2_pt=21, list_px=300, use_plan=True),
+}
+GAP = 2.5          # gap between list rows
+AFTER = 5          # space after a category block
 
-# Which categories share a page (chosen so pages fill up nicely). Leftover space gets a promo banner.
-# If dishes are added and a page no longer fits, the script falls back to automatic pagination.
+# Which categories share an A4 page (chosen so pages fill up nicely); leftover space gets a promo banner.
+# Used only when it fits the page size; otherwise categories flow automatically.
 PLAN = [
     ["inihaw", "sizzling", "@pitcher"],
     ["masarsang", "butter-garlic"],
@@ -47,8 +68,12 @@ PLAN = [
     ["almusal", "sweet-sour", "@qr"],
     ["sinangag", "drinks"],
 ]
+FILLER_ROTATION = ["pitcher", "combos", "qr"]
+
+e = H.escape
 
 
+# ------------------------------------------------------------------ data & images
 def menu():
     js = "global.window={};require(process.argv[1]);process.stdout.write(JSON.stringify(window.MENU))"
     out = subprocess.run(["node", "-e", js, os.path.join(ROOT, "assets", "js", "menu-data.js")],
@@ -68,9 +93,6 @@ def photo(slug, size, px=None):
     return "file:///" + out.replace("\\", "/")
 
 
-e = H.escape
-
-
 def price_html(it, cur):
     if it.get("prices"):
         return " / ".join(str(p["price"]) for p in it["prices"]) + f"<small>{cur}</small>"
@@ -81,17 +103,6 @@ def sub_html(it):
     if it.get("prices"):
         return " / ".join(p["label"] for p in it["prices"])
     return f'{it["cal"]} kcal' if it.get("cal") not in (None, "") else ""
-
-
-# ------------------------------------------------------------------ pages
-def page(inner, cls="", num=None, section=""):
-    top = bottom = ""
-    if num is not None:
-        top = (f'<div class="top"><span class="brand">BARKADA HOUSE</span>'
-               f'<span class="sect">{e(section)}</span></div>')
-        bottom = (f'<div class="bottom"><span>Villagio Building No. 2 · Gate #6 · 053 562 7615</span>'
-                  f'<span class="pn">{num:02d}</span></div>')
-    return f'<section class="page {cls}">{top}<div class="content">{inner}</div>{bottom}</section>'
 
 
 DOODLE_PATHS = (
@@ -106,7 +117,7 @@ DOODLE_PATHS = (
 
 def doodles_svg(w_mm, h_mm, tile_mm=54):
     """Vector doodle background (CSS background patterns get rasterised at 72 dpi in PDFs)."""
-    s = 160 / tile_mm                    # tile is drawn in a 160-unit box
+    s = 160 / tile_mm
     uses = "".join(f'<use href="#dd" x="{x * 160}" y="{y * 160}"/>'
                    for y in range(math.ceil(h_mm / tile_mm) + 1) for x in range(math.ceil(w_mm / tile_mm) + 1))
     return (f'<svg class="doodles" viewBox="0 0 {w_mm * s:.1f} {h_mm * s:.1f}" preserveAspectRatio="xMinYMin slice">'
@@ -114,178 +125,255 @@ def doodles_svg(w_mm, h_mm, tile_mm=54):
             f'stroke-linecap="round" stroke-linejoin="round">{DOODLE_PATHS}</g></defs>{uses}</svg>')
 
 
-def cover(M):
-    circles = [("chicken-inasal", 6, 116, 46), ("pancit-palabok", 160, 126, 46), ("kare-kare", 12, 186, 40), ("halo-halo", 160, 194, 38)]
-    small = "".join(f'<div class="dish" style="left:{x}mm;top:{y}mm;width:{d}mm;height:{d}mm">'
-                    f'<img src="{photo(s, 540)}"></div>' for s, x, y, d in circles)
-    return f"""<section class="page cover">{doodles_svg(210, 297)}
+# ------------------------------------------------------------------ builder
+class Book:
+    def __init__(self, F, M):
+        self.F, self.M = F, M
+        self.cur = M["restaurant"]["currency"]
+        self.content_top = F["band"] + F["gap"]
+        self.content_h = F["H"] - self.content_top - F["foot"] - F["pad"]
+        self.capacity = self.content_h + AFTER
+        self.pages = []
+        self.fill_i = 0
+
+    # ---- page chrome
+    def inner(self, html, section):
+        n = len(self.pages) + 1
+        self.pages.append(
+            f'<section class="page inner"><div class="top"><span class="brand">BARKADA HOUSE</span>'
+            f'<span class="sect">{e(section)}</span></div><div class="content">{html}</div>'
+            f'<div class="bottom"><span>{ADDRESS} · {PHONE}</span><span class="pn">{n:02d}</span></div></section>')
+
+    def cover_frame(self, inner_html):
+        """Cover-style page: artwork is designed on a 210 x 279 mm canvas and scaled to the page."""
+        F = self.F
+        s = min(F["W"] / 210, (F["H"] - F["cover_bar"]) / 279)
+        left = (F["W"] - 210 * s) / 2
+        return (f'<section class="page cover">{doodles_svg(F["W"], F["H"])}'
+                # CSS zoom (not transform) so print layout really shrinks; zoom also scales "left", hence / s
+                f'<div class="cv" style="zoom:{s:.4f};left:{left / s:.2f}mm">{inner_html}</div>'
+                f'<div class="cfoot"><span>{ADDRESS}</span><i></i><span>Mob. {PHONE}</span></div></section>')
+
+    def head(self, en, title):
+        return (f'<div class="cat-h"><p class="en">{en}</p><h2>{title}</h2><span class="line"></span></div>')
+
+    # ---- pages
+    def cover(self):
+        circles = [("chicken-inasal", 6, 116, 46), ("pancit-palabok", 160, 126, 46),
+                   ("kare-kare", 12, 186, 40), ("halo-halo", 160, 194, 38)]
+        small = "".join(f'<div class="dish" style="left:{x}mm;top:{y}mm;width:{d}mm;height:{d}mm">'
+                        f'<img src="{photo(s, 540)}"></div>' for s, x, y, d in circles)
+        self.pages.append(self.cover_frame(f"""
   <p class="kick"><span>AUTHENTIC FILIPINO FOOD</span></p>
   <h1 class="logo">BARKADA<small>HOUSE</small></h1>
   <p class="menuword"><i></i>MENU<i></i></p>
   <div class="hero"><img src="{photo('combo-17', 720)}"></div>
   {small}
   <div class="scanbox"><div class="q">{qr_svg()}</div>
-    <div><b>Scan for our digital menu</b><span>{SITE}</span></div></div>
-  <div class="cfoot"><span>Villagio Building No. 2 · Gate #6</span><i></i><span>Mob. 053 562 7615</span></div>
-</section>"""
+    <div><b>Scan for our digital menu</b><span>{SITE}</span></div></div>"""))
 
+    def back_cover(self):
+        self.pages.append(self.cover_frame(f"""
+  <p class="kick"><span>THANK YOU · SALAMAT PO</span></p>
+  <h1 class="logo">BARKADA<small>HOUSE</small></h1>
+  <div class="backcard"><p class="bk">Scan for our digital menu</p><div class="q">{qr_svg()}</div>
+    <span class="url">{SITE}</span><p class="bs">Every dish with photos and prices — share it with your barkada!</p></div>"""))
 
-def combos_page(M, num):
-    cur = M["restaurant"]["currency"]
-    cards = "".join(f"""<div class="combo"><div class="cimg"><img src="{photo(c['img'], 540, 450)}"></div>
-      <div class="cbody"><div class="chead"><h3>{e(c['name'].replace('Barkada ', ''))}</h3><span class="badge">{c['price']} {cur}</span></div>
-      <ul>{''.join(f'<li>{e(d)}</li>' for d in c['dishes'])}</ul><p class="kc">{c['cal']} kcal · + free items</p></div></div>"""
-                    for c in M["combos"])
-    free = " · ".join(e(f) for f in M["comboFreebies"])
-    inner = f"""<div class="cat-h"><p class="en">Sharing feasts for the whole barkada</p><h2>Barkada Combos</h2><span class="line"></span></div>
-<div class="free"><span class="ft">FREE</span><p>with every combo: <b>{free}</b></p></div>
-<div class="combos">{cards}</div>"""
-    return page(inner, "inner", num, "Barkada Combos")
+    def combos(self):
+        F, M, cur = self.F, self.M, self.cur
+        per = F["cb_cols"] * F["cb_rows"]
+        ch = (self.content_h - F["head"] - F["free_h"] - 4 - (F["cb_rows"] - 1) * 3.5) / F["cb_rows"]
+        free = " · ".join(e(f) for f in M["comboFreebies"])
+        combos = M["combos"]
+        for p in range(0, len(combos), per):
+            chunk = combos[p:p + per]
+            cards = "".join(f"""<div class="combo" style="height:{ch:.2f}mm"><div class="cimg" style="width:{ch - 4.4:.2f}mm;height:{ch - 4.4:.2f}mm"><img src="{photo(c['img'], 540, 450)}"></div>
+  <div class="cbody"><div class="chead"><h3>{e(c['name'].replace('Barkada ', ''))}</h3><span class="badge">{c['price']} {cur}</span></div>
+  <ul>{''.join(f'<li>{e(d)}</li>' for d in c['dishes'])}</ul><p class="kc">{c['cal']} kcal · + free items</p></div></div>""" for c in chunk)
+            title = "Barkada Combos" + (" <em>(continued)</em>" if p else "")
+            rows = math.ceil(len(chunk) / F["cb_cols"])
+            used = F["head"] + F["free_h"] + 4 + rows * ch + (rows - 1) * 3.5
+            html = (self.head("Sharing feasts for the whole barkada", title)
+                    + f'<div class="free" style="height:{F["free_h"]}mm"><span class="ft">FREE</span><p>with every combo: <b>{free}</b></p></div>'
+                    + f'<div class="combos">{cards}</div>')
+            html += self.maybe_filler(self.content_h - used - 4)
+            self.inner(html, "Barkada Combos")
 
+    def specials(self, cat):
+        F, cur = self.F, self.cur
+        per = F["sp_cols"] * F["sp_rows"]
+        ch = (self.content_h - F["head"] - (F["sp_rows"] - 1) * 5) / F["sp_rows"]
+        items = cat["items"]
+        for p in range(0, len(items), per):
+            cards = "".join(f"""<div class="sp" style="height:{ch:.2f}mm"><div class="spimg" style="height:{ch - 30:.2f}mm"><img src="{photo(it['img'], 540, 450)}"><span class="badge">{price_html(it, cur)}</span></div>
+  <h3>{e(it['name'])}</h3><p>{e(it['desc'])}</p><span class="kc">{sub_html(it)}</span></div>""" for it in items[p:p + per])
+            title = e(cat["name"]) + (" <em>(continued)</em>" if p else "")
+            self.inner(self.head(f"{e(cat['en'])} · chef's favourites", title) + f'<div class="specials">{cards}</div>',
+                       cat["name"])
 
-def specials_page(cat, cur, num):
-    cards = "".join(f"""<div class="sp"><div class="spimg"><img src="{photo(it['img'], 540, 450)}"><span class="badge">{price_html(it, cur)}</span></div>
-      <h3>{e(it['name'])}</h3><p>{e(it['desc'])}</p><span class="kc">{sub_html(it)}</span></div>""" for it in cat["items"])
-    inner = (f'<div class="cat-h"><p class="en">{e(cat["en"])} · chef\'s favourites</p><h2>{e(cat["name"])}</h2>'
-             f'<span class="line"></span></div><div class="specials">{cards}</div>')
-    return page(inner, "inner", num, cat["name"])
-
-
-def item_html(it, cur):
-    return f"""<div class="it"><div class="ph"><img src="{photo(it['img'], 360, 300)}"></div>
+    # ---- list pages
+    def item(self, it):
+        F = self.F
+        return f"""<div class="it"><div class="ph"><img src="{photo(it['img'], 360, F['list_px'])}"></div>
   <div class="tx"><h4>{e(it['name'])}</h4><p>{e(it['desc'])}</p></div>
-  <div class="pr"><b>{price_html(it, cur)}</b><span>{sub_html(it)}</span></div></div>"""
+  <div class="pr"><b>{price_html(it, self.cur)}</b><span>{sub_html(it)}</span></div></div>"""
 
+    def rows(self, n):
+        return math.ceil(n / self.F["cols"])
 
-def block_h(rows):
-    return CAT_HEAD + rows * ROW + (rows - 1) * GAP + AFTER
+    def block_h(self, rows):
+        return self.F["head"] + rows * self.F["row"] + (rows - 1) * GAP + AFTER
 
+    def cat_block(self, cat, items, cont=False):
+        r = self.rows(len(items))
+        title = e(cat["name"]) + (" <em>(continued)</em>" if cont else "")
+        return (self.head(e(cat["en"]), title)
+                + f'<div class="items" style="height:{r * self.F["row"] + (r - 1) * GAP}mm">'
+                + "".join(self.item(it) for it in items) + "</div>")
 
-def cat_block(cat, items, cur, cont=False):
-    rows = math.ceil(len(items) / 2)
-    title = e(cat["name"]) + (' <em>(continued)</em>' if cont else "")
-    return (f'<div class="cat-h"><p class="en">{e(cat["en"])}</p><h2>{title}</h2><span class="line"></span></div>'
-            f'<div class="items" style="height:{rows * ROW + (rows - 1) * GAP}mm">'
-            + "".join(item_html(it, cur) for it in items) + "</div>")
-
-
-def greedy_pages(cats, cur):
-    """Fallback: fill pages in order, splitting categories when needed."""
-    pages, blocks, used, sections = [], [], 0.0, []
-
-    def flush():
-        nonlocal blocks, used, sections
-        if blocks:
-            pages.append((blocks, sections, CAPACITY - used))
-        blocks, used, sections = [], 0.0, []
-
-    for cat in cats:
-        items, idx, cont = cat["items"], 0, False
-        while idx < len(items):
-            fit = int((CAPACITY - used - CAT_HEAD - AFTER + GAP) // (ROW + GAP))
-            rows_left = math.ceil((len(items) - idx) / 2)
-            if fit < min(2, rows_left):
-                flush()
-                continue
-            take = min(fit, rows_left)
-            blocks.append(cat_block(cat, items[idx: idx + take * 2], cur, cont))
-            sections.append(cat["name"])
-            used += block_h(take)
-            idx, cont = idx + take * 2, True
-            if idx < len(items):
-                flush()
-    flush()
-    return pages
-
-
-def planned_pages(cats, cur):
-    by_id = {c["id"]: c for c in cats}
-    planned = [cid for pg in PLAN for cid in pg if not cid.startswith("@")]
-    if sorted(planned) != sorted(by_id):          # categories added/removed -> automatic layout
-        return None
-    pages = []
-    for pg in PLAN:
-        blocks, sections, used, fillers = [], [], 0.0, []
-        for cid in pg:
-            if cid.startswith("@"):
-                fillers.append(cid[1:])
-                continue
-            cat = by_id[cid]
-            blocks.append(cat_block(cat, cat["items"], cur))
-            sections.append(cat["name"])
-            used += block_h(math.ceil(len(cat["items"]) / 2))
-        if used > CAPACITY:
+    def planned(self, cats):
+        by_id = {c["id"]: c for c in cats}
+        if sorted(c for pg in PLAN for c in pg if not c.startswith("@")) != sorted(by_id):
             return None
-        pages.append((blocks, sections, CAPACITY - used, fillers))
-    return pages
+        out = []
+        for pg in PLAN:
+            blocks, secs, used, fills = [], [], 0.0, []
+            for cid in pg:
+                if cid.startswith("@"):
+                    fills.append(cid[1:])
+                    continue
+                cat = by_id[cid]
+                blocks.append(self.cat_block(cat, cat["items"]))
+                secs.append(cat["name"])
+                used += self.block_h(self.rows(len(cat["items"])))
+            if used > self.capacity:
+                return None
+            out.append((blocks, secs, self.capacity - used, fills))
+        return out
 
+    def greedy(self, cats):
+        cols = self.F["cols"]
+        out, blocks, used, secs = [], [], 0.0, []
 
-def filler(kind, M, h):
-    cur = M["restaurant"]["currency"]
-    h = min(h, 64)
-    if kind == "pitcher":
-        items = {it["id"]: it for c in M["categories"] for it in c["items"]}
-        pj, it_ = items.get("pineapple-juice"), items.get("iced-tea")
-        if not (pj and it_ and pj.get("prices")):
+        def flush():
+            nonlocal blocks, used, secs
+            if blocks:
+                out.append((blocks, secs, self.capacity - used, []))
+            blocks, used, secs = [], 0.0, []
+
+        for cat in cats:
+            items, idx, cont = cat["items"], 0, False
+            while idx < len(items):
+                fit = int((self.capacity - used - self.F["head"] - AFTER + GAP) // (self.F["row"] + GAP))
+                rows_left = self.rows(len(items) - idx)
+                if fit < min(2, rows_left):
+                    flush()
+                    continue
+                take = min(fit, rows_left)
+                blocks.append(self.cat_block(cat, items[idx: idx + take * cols], cont))
+                secs.append(cat["name"])
+                used += self.block_h(take)
+                idx, cont = idx + take * cols, True
+                if idx < len(items):
+                    flush()
+        flush()
+        for pg in out:                      # promo banners wherever a page has room (different ones per page)
+            rem = pg[2]
+            while rem >= 45 and len(pg[3]) < len(FILLER_ROTATION):
+                kind = FILLER_ROTATION[self.fill_i % len(FILLER_ROTATION)]
+                self.fill_i += 1
+                if kind in pg[3]:
+                    continue
+                pg[3].append(kind)
+                rem -= min(rem - 4, self.F["promo_max"]) + 4
+        return out
+
+    def maybe_filler(self, free):
+        if free < 45:
             return ""
-        single, pitcher = pj["prices"][0]["price"], pj["prices"][-1]["price"]
-        return f"""<div class="promo pitcher" style="height:{h}mm"><div class="ptx"><span class="pk">PITCHER DEAL</span>
+        kind = FILLER_ROTATION[self.fill_i % len(FILLER_ROTATION)]
+        self.fill_i += 1
+        return self.filler(kind, free)
+
+    def filler(self, kind, h):
+        F, M, cur = self.F, self.M, self.cur
+        h = min(h, F["promo_max"])
+        if kind == "pitcher":
+            items = {it["id"]: it for c in M["categories"] for it in c["items"]}
+            pj, it_ = items.get("pineapple-juice"), items.get("iced-tea")
+            if not (pj and it_ and pj.get("prices")):
+                return ""
+            single, pitcher = pj["prices"][0]["price"], pj["prices"][-1]["price"]
+            return f"""<div class="promo pitcher" style="height:{h:.1f}mm"><div class="ptx"><span class="pk">PITCHER DEAL</span>
   <h3>Pineapple Juice &amp; Iced Tea</h3><p>Single <b>{single} {cur}</b> &nbsp;·&nbsp; Pitcher <b>{pitcher} {cur}</b> — made for sharing with the barkada.</p></div>
   <div class="pimgs"><div class="pc"><img src="{photo('pineapple-juice', 540)}"></div><div class="pc"><img src="{photo('iced-tea', 540)}"></div></div></div>"""
-    if kind == "combos":
-        free = ", ".join(f.split(" (")[0] for f in M["comboFreebies"])
-        price = M["combos"][0]["price"]
-        return f"""<div class="promo combo-ad" style="height:{h}mm"><div class="ptx"><span class="pk">FOR THE WHOLE BARKADA</span>
-  <h3>Barkada Combos · {price} {cur}</h3><p>4 dishes plus FREE {e(free)}. See the Barkada Combos page.</p></div>
+        if kind == "combos":
+            free = ", ".join(f.split(" (")[0] for f in M["comboFreebies"])
+            return f"""<div class="promo combo-ad" style="height:{h:.1f}mm"><div class="ptx"><span class="pk">FOR THE WHOLE BARKADA</span>
+  <h3>Barkada Combos · {M['combos'][0]['price']} {cur}</h3><p>4 dishes plus FREE {e(free)}.</p></div>
   <div class="feast"><img src="{photo('combo-13', 540)}"></div></div>"""
-    if kind == "qr":
-        return f"""<div class="promo qrp" style="height:{h}mm"><div class="q">{qr_svg()}</div>
+        if kind == "qr":
+            return f"""<div class="promo qrp" style="height:{h:.1f}mm"><div class="q">{qr_svg()}</div>
   <div class="ptx"><span class="pk">DIGITAL MENU</span><h3>Scan &amp; share with your barkada</h3>
   <p>Every dish with photos and prices, right on your phone.</p><span class="url">{SITE}</span></div></div>"""
-    return ""
+        return ""
 
+    # ---- whole book
+    def build(self):
+        cats = self.M["categories"]
+        special = next(c for c in cats if c["id"] == "special")
+        rest = [c for c in cats if c["id"] != "special"]
+        self.cover()
+        self.combos()
+        self.specials(special)
+        pages = self.planned(rest) if self.F["use_plan"] else None
+        if pages is None:
+            pages = self.greedy(rest)
+        for blocks, secs, free, fills in pages:
+            extra, rem = "", free
+            for k in fills:
+                if rem < 40:
+                    break
+                h = min(rem - 4, self.F["promo_max"])
+                extra += self.filler(k, h)
+                rem -= h + 4
+            self.inner("".join(blocks) + extra, " · ".join(dict.fromkeys(secs)))
+        if len(self.pages) % 2:            # even page count for double-sided printing
+            self.back_cover()
+        return self.html()
 
-def build_html(M):
-    cur = M["restaurant"]["currency"]
-    cats = M["categories"]
-    special = next(c for c in cats if c["id"] == "special")
-    rest = [c for c in cats if c["id"] != "special"]
-
-    parts = [cover(M), combos_page(M, 2), specials_page(special, cur, 3)]
-    pages = planned_pages(rest, cur)
-    if pages is None:
-        print("NOTE: page plan doesn't fit the current menu -> automatic layout")
-        pages = [(b, s, free, []) for b, s, free in greedy_pages(rest, cur)]
-        if pages and pages[-1][2] >= 50:
-            pages[-1][3].append("qr")
-        else:
-            pages.append(([], ["Scan & share"], CAPACITY, ["qr"]))
-    num = 4
-    for blocks, sections, free, fillers in pages:
-        extra = "".join(filler(k, M, free - 4) for k in fillers if free >= 40)
-        parts.append(page("".join(blocks) + extra, "inner", num, " · ".join(dict.fromkeys(sections))))
-        num += 1
-    fonts = "".join([font_face("Fredoka", "Fredoka.ttf", "300 700"),
-                     font_face("Poppins", "Poppins-Medium.ttf", 500),
-                     font_face("Poppins", "Poppins-SemiBold.ttf", 600),
-                     font_face("Poppins", "Poppins-Bold.ttf", 700)])
-    return f"""<!doctype html><html><head><meta charset="utf-8"><style>{fonts}{CSS}</style></head>
-<body>{''.join(parts)}</body></html>""", num - 1
+    def html(self):
+        F = self.F
+        css = Template(CSS).substitute(
+            W=F["W"], H=F["H"], side=F["side"], band=F["band"], foot=F["foot"], ctop=self.content_top,
+            ch=f"{self.content_h:.2f}", cols=" ".join(["1fr"] * F["cols"]), row=F["row"], ph=F["ph"],
+            clamp=F["clamp"], head=F["head"], rh=F["row"] / 2, line_top=F["head"] - 6.5, sp_cols=F["sp_cols"], cb_cols=F["cb_cols"],
+            cb_li=F["cb_li"], promo_img=F["promo_img"], feast_w=F["feast_w"], qr_promo=F["qr_promo"],
+            promo_h3=F["promo_h3"], cover_bar=F["cover_bar"], brand_pt=F["brand_pt"], sect_pt=F["sect_pt"],
+            foot_pt=F["foot_pt"], h2_pt=F["h2_pt"], cfoot_pt=round(10.5 * F["cover_bar"] / 18, 1),
+            DOODLES=DOODLES)
+        fonts = "".join([font_face("Fredoka", "Fredoka.ttf", "300 700"),
+                         font_face("Poppins", "Poppins-Medium.ttf", 500),
+                         font_face("Poppins", "Poppins-SemiBold.ttf", 600),
+                         font_face("Poppins", "Poppins-Bold.ttf", 700)])
+        return (f'<!doctype html><html><head><meta charset="utf-8"><style>{fonts}{css}</style></head>'
+                f'<body>{"".join(self.pages)}</body></html>')
 
 
 CSS = """
-@page { size: 210mm 297mm; margin: 0; }
+@page { size: ${W}mm ${H}mm; margin: 0; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { -webkit-print-color-adjust: exact; print-color-adjust: exact; font-family: Poppins, sans-serif; color: #392214; }
-.page { position: relative; width: 210mm; height: 297mm; overflow: hidden; break-after: page;
-  background: #FBF7EE; }
+.page { position: relative; width: ${W}mm; height: ${H}mm; overflow: hidden; break-after: page; background: #FBF7EE; }
 .page:last-child { break-after: auto; }
 img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.q svg { width: 100%; height: 100%; display: block; }
 
-/* ---------- cover ---------- */
+/* ---------- cover / back cover (artwork on a 210 x 279 mm canvas, scaled) ---------- */
 .doodles { position: absolute; inset: 0; width: 100%; height: 100%; }
 .cover { background: radial-gradient(130mm 100mm at 80% 6%, rgba(255,255,255,.32), transparent 70%),
   linear-gradient(180deg, #D9B53A 0%, #D0AA2B 55%, #C59B20 100%); }
+.cv { position: absolute; top: 0; width: 210mm; height: 279mm; }
 .cover .kick { position: absolute; top: 20mm; left: 0; right: 0; text-align: center; }
 .cover .kick span { display: inline-block; font: 700 9pt Poppins; letter-spacing: .34em; color: #fff;
   background: rgba(57,34,20,.2); padding: 2mm 6mm 2mm 7mm; border-radius: 10mm; }
@@ -303,43 +391,48 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .scanbox { position: absolute; left: 50%; transform: translateX(-50%); top: 240mm; display: flex; align-items: center; gap: 5mm;
   background: #fff; border-radius: 5mm; padding: 3mm 7mm 3mm 3mm; box-shadow: 0 2mm 6mm rgba(57,34,20,.25); white-space: nowrap; }
 .scanbox .q { width: 25mm; height: 25mm; padding: 1.5mm; }
-.scanbox .q svg, .thanks .q svg { width: 100%; height: 100%; display: block; }
 .scanbox b { display: block; font: 700 14pt Fredoka; color: #392214; }
 .scanbox span { font: 600 9pt Poppins; color: #A9861B; }
-.cfoot { position: absolute; left: 0; right: 0; bottom: 0; height: 18mm; background: #E61D25; color: #fff;
-  display: flex; align-items: center; justify-content: center; gap: 6mm; font: 600 10.5pt Poppins; }
-.cfoot i { width: .4mm; height: 7mm; background: rgba(255,255,255,.5); }
+.backcard { position: absolute; left: 35mm; right: 35mm; top: 112mm; background: #fff; border-radius: 8mm; text-align: center;
+  padding: 9mm 10mm 10mm; box-shadow: 0 4mm 12mm rgba(57,34,20,.35); }
+.backcard .bk { font: 700 19pt Fredoka; color: #392214; }
+.backcard .q { width: 86mm; height: 86mm; margin: 6mm auto 5mm; }
+.backcard .url { display: inline-block; font: 600 11pt Poppins; background: #FBF2D6; padding: 1.5mm 5mm; border-radius: 8mm; }
+.backcard .bs { font: 500 10pt/1.45 Poppins; color: #6E5A49; margin-top: 4mm; }
+.cfoot { position: absolute; left: 0; right: 0; bottom: 0; height: ${cover_bar}mm; background: #E61D25; color: #fff;
+  display: flex; align-items: center; justify-content: center; gap: 6mm; font: 600 ${cfoot_pt}pt Poppins; }
+.cfoot i { width: .4mm; height: 45%; background: rgba(255,255,255,.5); }
 
 /* ---------- inner page chrome ---------- */
-.top { position: absolute; top: 0; left: 0; right: 0; height: 15mm; padding: 0 12mm; display: flex; align-items: center;
-  justify-content: space-between; background: url("DOODLES") 0 0 / 40mm 40mm, linear-gradient(180deg, #D8B337, #C99F22); }
-.top .brand { font: 700 15pt Fredoka; color: #fff; letter-spacing: .06em; text-shadow: 0 .5mm 0 rgba(57,34,20,.2); }
-.top .sect { font: 600 7.5pt Poppins; letter-spacing: .14em; text-transform: uppercase; color: #392214;
-  background: rgba(255,255,255,.55); padding: 1.2mm 3.5mm; border-radius: 6mm; max-width: 120mm;
+.top { position: absolute; top: 0; left: 0; right: 0; height: ${band}mm; padding: 0 ${side}mm; display: flex; align-items: center;
+  justify-content: space-between; gap: 4mm; background: url("${DOODLES}") 0 0 / 40mm 40mm, linear-gradient(180deg, #D8B337, #C99F22); }
+.top .brand { flex: none; font: 700 ${brand_pt}pt Fredoka; color: #fff; letter-spacing: .06em; text-shadow: 0 .5mm 0 rgba(57,34,20,.2); }
+.top .sect { font: 600 ${sect_pt}pt Poppins; letter-spacing: .14em; text-transform: uppercase; color: #392214;
+  background: rgba(255,255,255,.55); padding: 1.2mm 3.5mm; border-radius: 6mm; min-width: 0;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bottom { position: absolute; bottom: 0; left: 0; right: 0; height: 11mm; padding: 0 12mm; background: #392214; color: #E9DCCB;
-  display: flex; align-items: center; justify-content: space-between; font: 500 7.8pt Poppins; }
+.bottom { position: absolute; bottom: 0; left: 0; right: 0; height: ${foot}mm; padding: 0 ${side}mm; background: #392214; color: #E9DCCB;
+  display: flex; align-items: center; justify-content: space-between; font: 500 ${foot_pt}pt Poppins; }
 .bottom .pn { font: 700 11pt Fredoka; color: #D0AA2B; }
-.inner .content { position: absolute; top: 22mm; left: 12mm; right: 12mm; height: 252mm; }
+.inner .content { position: absolute; top: ${ctop}mm; left: ${side}mm; right: ${side}mm; height: ${ch}mm; }
 
-.cat-h { position: relative; height: 18mm; padding-top: .5mm; }
+.cat-h { position: relative; height: ${head}mm; padding-top: .5mm; }
 .cat-h .en { font: 700 7.4pt Poppins; letter-spacing: .16em; text-transform: uppercase; color: #A9861B; }
-.cat-h h2 { font: 700 21pt/1.1 Fredoka; color: #392214; display: inline-block; background: #FBF7EE; padding-right: 4mm;
+.cat-h h2 { font: 700 ${h2_pt}pt/1.1 Fredoka; color: #392214; display: inline-block; background: #FBF7EE; padding-right: 4mm;
   position: relative; z-index: 1; }
-.cat-h h2 em { font: 500 10pt Poppins; color: #7A6656; font-style: normal; }
-.cat-h .line { position: absolute; left: 0; right: 0; top: 11.5mm; height: .6mm; background: linear-gradient(90deg, #D0AA2B, rgba(208,170,43,.15)); }
+.cat-h h2 em { font: 500 9pt Poppins; color: #7A6656; font-style: normal; }
+.cat-h .line { position: absolute; left: 0; right: 0; top: ${line_top}mm; height: .6mm; background: linear-gradient(90deg, #D0AA2B, rgba(208,170,43,.15)); }
 
 /* ---------- list items ---------- */
-.items { display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 24mm; column-gap: 8mm; row-gap: 2.5mm; margin-bottom: 5mm; }
-.it { display: flex; align-items: center; gap: 3mm; background: #fff; border-radius: 12mm 4mm 4mm 12mm; padding: 1mm 3mm 1mm 1mm;
+.items { display: grid; grid-template-columns: ${cols}; grid-auto-rows: ${row}mm; column-gap: 8mm; row-gap: 2.5mm; margin-bottom: 5mm; }
+.it { display: flex; align-items: center; gap: 3mm; background: #fff; border-radius: ${rh}mm 4mm 4mm ${rh}mm; padding: 1mm 3mm 1mm 1mm;
   border: .3mm solid #EDE1C8; }
-.it .ph { flex: none; width: 22mm; height: 22mm; border-radius: 50%; overflow: hidden; background: #EFE8DA;
+.it .ph { flex: none; width: ${ph}mm; height: ${ph}mm; border-radius: 50%; overflow: hidden; background: #EFE8DA;
   box-shadow: 0 0 0 .8mm #F6EBC6; }
 .it .ph img { transform: scale(1.22); }
 .it .tx { flex: 1; min-width: 0; }
 .it h4 { font: 600 11.2pt/1.08 Fredoka; color: #392214; }
 .it .tx p { font: 500 6.9pt/1.33 Poppins; color: #6E5A49; margin-top: .7mm;
-  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+  display: -webkit-box; -webkit-line-clamp: ${clamp}; -webkit-box-orient: vertical; overflow: hidden; }
 .it .pr { flex: none; width: 17mm; text-align: right; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
 .it .pr b { font: 700 15pt/1 Fredoka; color: #E61D25; white-space: nowrap; }
 .it .pr b small, .badge small { font: 700 6.5pt Poppins; margin-left: .6mm; }
@@ -347,27 +440,27 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
 /* ---------- combos ---------- */
 .free { display: flex; align-items: center; gap: 3mm; background: #392214; color: #F1E6D6; border-radius: 4mm;
-  padding: 2.6mm 4mm; margin-bottom: 4mm; font: 500 8.2pt/1.35 Poppins; }
+  padding: 0 4mm; margin-bottom: 4mm; font: 500 8.2pt/1.35 Poppins; }
 .free b { color: #D0AA2B; font-weight: 600; }
 .ft { flex: none; background: #E61D25; color: #fff; font: 700 9pt Fredoka; letter-spacing: .1em; padding: 1.2mm 2.6mm; border-radius: 2mm; }
-.combos { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm 6mm; }
-.combo { display: flex; gap: 3.5mm; background: #fff; border-radius: 4mm; padding: 2.2mm; height: 41mm;
+.combos { display: grid; grid-template-columns: repeat(${cb_cols}, 1fr); gap: 3.5mm 6mm; margin-bottom: 4mm; }
+.combo { display: flex; gap: 3.5mm; background: #fff; border-radius: 4mm; padding: 2.2mm; overflow: hidden;
   box-shadow: 0 .8mm 2.5mm rgba(57,34,20,.14); }
-.cimg { flex: none; width: 36.6mm; height: 36.6mm; border-radius: 3mm; overflow: hidden; }
-.cbody { flex: 1; min-width: 0; padding-top: .6mm; }
+.cimg { flex: none; border-radius: 3mm; overflow: hidden; }
+.cbody { flex: 1; min-width: 0; padding-top: .4mm; }
 .chead { display: flex; align-items: center; justify-content: space-between; gap: 2mm; }
 .chead h3 { font: 700 12.5pt Fredoka; color: #392214; white-space: nowrap; }
 .badge { background: #9C364B; color: #fff; font: 700 10pt Fredoka; padding: .8mm 2.4mm; border-radius: 2mm; white-space: nowrap; }
-.combo ul { list-style: none; margin-top: 1.2mm; }
-.combo li { font: 600 7.6pt/1.42 Poppins; color: #4D3A2C; padding-left: 3mm; position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.combo li::before { content: ""; position: absolute; left: .3mm; top: 1.45mm; width: 1.5mm; height: 1.5mm; border-radius: 50%; background: #D0AA2B; }
-.combo .kc { font: 500 6.4pt Poppins; color: #8C7867; margin-top: .8mm; }
+.combo ul { list-style: none; margin-top: 1mm; }
+.combo li { font: 600 ${cb_li}pt/1.36 Poppins; color: #4D3A2C; padding-left: 3mm; position: relative; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.combo li::before { content: ""; position: absolute; left: .3mm; top: 1.3mm; width: 1.5mm; height: 1.5mm; border-radius: 50%; background: #D0AA2B; }
+.combo .kc { font: 500 6.4pt Poppins; color: #8C7867; margin-top: .6mm; }
 
 /* ---------- specials ---------- */
-.specials { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5mm 4mm; }
-.sp { background: #fff; border-radius: 4mm; overflow: hidden; height: 72mm; box-shadow: 0 .8mm 2.5mm rgba(57,34,20,.14);
+.specials { display: grid; grid-template-columns: repeat(${sp_cols}, 1fr); gap: 5mm 4mm; }
+.sp { background: #fff; border-radius: 4mm; overflow: hidden; box-shadow: 0 .8mm 2.5mm rgba(57,34,20,.14);
   display: flex; flex-direction: column; }
-.spimg { position: relative; height: 42mm; flex: none; }
+.spimg { position: relative; flex: none; }
 .spimg .badge { position: absolute; right: 2mm; top: 2mm; background: #E61D25; font-size: 12pt; padding: 1mm 2.4mm;
   box-shadow: 0 1mm 2mm rgba(0,0,0,.25); }
 .sp h3 { font: 600 11pt/1.1 Fredoka; color: #392214; padding: 2.4mm 2.6mm 0; }
@@ -376,38 +469,92 @@ img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .sp .kc { margin-top: auto; padding: 0 2.6mm 2.2mm; font: 600 6.3pt Poppins; color: #A9861B; }
 
 /* ---------- promo banners (fill leftover space) ---------- */
-.promo { position: relative; display: flex; align-items: center; gap: 6mm; border-radius: 5mm; overflow: hidden; padding: 0 0 0 8mm;
+.promo { position: relative; display: flex; align-items: center; gap: 5mm; border-radius: 5mm; overflow: hidden; padding: 0 0 0 7mm;
   box-shadow: 0 1mm 4mm rgba(57,34,20,.2); }
+.promo + .promo { margin-top: 4mm; }
 .promo .ptx { flex: 1; min-width: 0; }
 .promo .pk { display: inline-block; font: 700 6.8pt Poppins; letter-spacing: .2em; padding: 1mm 3mm; border-radius: 5mm; }
-.promo h3 { font: 700 19pt/1.1 Fredoka; margin-top: 2mm; }
-.promo p { font: 500 8.4pt/1.45 Poppins; margin-top: 1.5mm; max-width: 110mm; }
-.pitcher { background: url("DOODLES") 0 0 / 40mm 40mm, linear-gradient(120deg, #D8B337, #C79E22); color: #fff; }
+.promo h3 { font: 700 ${promo_h3}pt/1.1 Fredoka; margin-top: 2mm; }
+.promo p { font: 500 8.2pt/1.45 Poppins; margin-top: 1.5mm; max-width: 110mm; }
+.pitcher { background: url("${DOODLES}") 0 0 / 40mm 40mm, linear-gradient(120deg, #D8B337, #C79E22); color: #fff; }
 .pitcher .pk { background: #E61D25; color: #fff; }
 .pitcher h3 { text-shadow: 0 .6mm 0 rgba(57,34,20,.2); }
 .pitcher p b { color: #392214; font-weight: 700; }
-.pimgs { flex: none; display: flex; padding-right: 7mm; }
-.pc { width: 40mm; height: 40mm; border-radius: 50%; overflow: hidden; border: 1.6mm solid #fff; box-shadow: 0 1.5mm 4mm rgba(57,34,20,.35); }
+.pimgs { flex: none; display: flex; padding-right: 6mm; }
+.pc { width: ${promo_img}mm; height: ${promo_img}mm; border-radius: 50%; overflow: hidden; border: 1.6mm solid #fff; box-shadow: 0 1.5mm 4mm rgba(57,34,20,.35); }
 .pc + .pc { margin-left: -9mm; }
 .combo-ad { background: #392214; color: #F1E6D6; }
 .combo-ad .pk { background: #D0AA2B; color: #392214; }
 .combo-ad h3 { color: #D0AA2B; }
-.combo-ad .feast { flex: none; align-self: stretch; width: 70mm; clip-path: ellipse(100% 100% at 100% 50%); }
+.combo-ad .feast { flex: none; align-self: stretch; width: ${feast_w}mm; clip-path: ellipse(100% 100% at 100% 50%); }
 .qrp { background: #fff; padding-left: 5mm; border-left: 2.5mm solid #D0AA2B; }
-.qrp .q { flex: none; width: 40mm; height: 40mm; }
-.qrp .q svg { width: 100%; height: 100%; display: block; }
+.qrp .q { flex: none; width: ${qr_promo}mm; height: ${qr_promo}mm; }
 .qrp .pk { background: #F6EBC6; color: #A9861B; }
 .qrp h3 { color: #E61D25; }
 .qrp p { color: #4D3A2C; }
-.qrp .url { display: inline-block; margin-top: 2mm; font: 600 8.6pt Poppins; color: #392214; background: #FBF2D6; padding: 1mm 3.5mm; border-radius: 6mm; }
-""".replace("TERRAZZO", TERRAZZO).replace("DOODLES", DOODLES)
+.qrp .url { display: inline-block; margin-top: 2mm; font: 600 8.2pt Poppins; color: #392214; background: #FBF2D6; padding: 1mm 3.5mm; border-radius: 6mm; }
+"""
 
 
-# ------------------------------------------------------------------ web page
-def web_page(n_pages, pdf_kb):
-    imgs = "\n".join(
-        f'    <img src="page-{i:02d}.webp" width="1000" height="1414" alt="Menu card page {i}"'
-        + (' loading="lazy"' if i > 1 else '') + ' decoding="async">' for i in range(1, n_pages + 1))
+# ------------------------------------------------------------------ render
+def render(key, F, M, browser):
+    book = Book(F, M)
+    doc_html = book.build()
+    n_pages = len(book.pages)
+    pdf = os.path.join(OUT_DIR, F["file"])
+    tmp = os.path.join(os.path.dirname(os.path.abspath(__file__)), f"_menu_card_build_{key}.html")
+    open(tmp, "w", encoding="utf-8").write(doc_html)
+    if os.path.exists(pdf):
+        os.remove(pdf)
+    try:
+        subprocess.run([browser, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
+                        "--run-all-compositor-stages-before-draw", "--virtual-time-budget=15000",
+                        "--allow-file-access-from-files", "--no-first-run", "--no-default-browser-check",
+                        f"--user-data-dir={os.path.join(tempfile.gettempdir(), 'bh-menucard-profile')}",
+                        f"--print-to-pdf={pdf}", "file:///" + tmp.replace("\\", "/")],
+                       check=True, capture_output=True, timeout=300)
+    finally:
+        if "--keep-html" not in sys.argv and os.path.exists(tmp):
+            os.remove(tmp)
+    if not os.path.exists(pdf):
+        sys.exit(f"Browser did not produce the {key} PDF.")
+
+    import pymupdf
+    doc = pymupdf.open(pdf)
+    size_mm = [round(v / 72 * 25.4, 1) for v in doc[0].rect[2:]]
+    print(f"{key:7s} -> {F['file']}  {len(doc)} pages, {size_mm[0]} x {size_mm[1]} mm, {os.path.getsize(pdf) // 1024} KB")
+    if len(doc) != n_pages:
+        print(f"  WARNING: expected {n_pages} pages, got {len(doc)} (something overflowed)")
+    pdir = os.path.join(OUT_DIR, key.lower())
+    shutil.rmtree(pdir, ignore_errors=True)
+    os.makedirs(pdir)
+    for i, pg in enumerate(doc, 1):
+        pix = pg.get_pixmap(dpi=round(1000 / (F["W"] / 25.4)))  # ~1000 px wide previews
+        Image.frombytes("RGB", (pix.w, pix.h), pix.samples).save(
+            os.path.join(pdir, f"page-{i:02d}.webp"), "WEBP", quality=80, method=6)
+    return dict(key=key, label=F["label"], size=F["size"], file=F["file"], pages=len(doc),
+                mb=os.path.getsize(pdf) / 1024 / 1024, ratio=F["H"] / F["W"])
+
+
+def web_page(results):
+    tabs = "".join(
+        f'<input type="radio" name="fmt" id="t-{r["key"]}"{" checked" if i == 0 else ""}>'
+        f'<label for="t-{r["key"]}">{e(r["label"].split(" (")[0])}<small>{e(r["size"])}</small></label>'
+        for i, r in enumerate(results))
+    downloads = "".join(
+        f'<a class="dl" href="{r["file"]}" download><span class="ic">{e(r["key"].upper()[:6])}</span>'
+        f'<span><span class="t">{e(r["label"])}</span><br><span class="d">{e(r["size"])} · {r["pages"]} pages · PDF {r["mb"]:.1f} MB</span></span>'
+        f'<span class="ar">↓</span></a>' for r in results)
+    panels = ""
+    for i, r in enumerate(results):
+        imgs = "\n".join(
+            f'      <img src="{r["key"].lower()}/page-{p:02d}.webp" width="1000" height="{round(1000 * r["ratio"])}" '
+            f'alt="{e(r["label"])} page {p}"' + (' loading="lazy"' if (i or p > 1) else "") + ' decoding="async">'
+            for p in range(1, r["pages"] + 1))
+        panels += (f'\n    <div class="panel" id="p-{r["key"]}"><div class="bar"><a class="btn dark" href="{r["file"]}" download>'
+                   f'⬇ Download {e(r["label"].split(" (")[0])} PDF</a><a class="btn ghost" href="{r["file"]}" target="_blank" rel="noopener">'
+                   f'Open / Print</a></div>\n{imgs}\n    </div>')
+    show = "\n".join(f'  #t-{r["key"]}:checked ~ .panels #p-{r["key"]} {{ display: grid; }}' for r in results)
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -426,16 +573,33 @@ def web_page(n_pages, pdf_kb):
   h1 {{ font: 900 clamp(34px, 11vw, 52px)/.95 "Arial Rounded MT Bold", ui-rounded, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .03em; margin-top: 10px; text-shadow: 0 3px 0 rgba(57,34,20,.18); }}
   header p {{ margin-top: 8px; font-weight: 600; }}
   main {{ max-width: 760px; margin: -44px auto 0; padding: 0 14px 40px; }}
-  .actions {{ display: grid; gap: 10px; background: #fff; border-radius: 18px; padding: 14px; box-shadow: 0 14px 30px -16px rgba(57,34,20,.5); }}
-  .btn {{ display: flex; align-items: center; justify-content: center; gap: 10px; height: 52px; border-radius: 14px; text-decoration: none; font-weight: 800; }}
-  .btn.dl {{ background: var(--brown); color: #fff; }}
-  .btn.dl small {{ font-weight: 600; opacity: .75; }}
-  .row {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
-  .btn.ghost {{ background: var(--cream); color: var(--brown); border: 1.5px solid var(--line); font-size: 14px; height: 46px; }}
-  .btn.red {{ background: var(--red); color: #fff; border: 0; }}
+  .card {{ background: #fff; border-radius: 18px; padding: 14px; box-shadow: 0 14px 30px -16px rgba(57,34,20,.5); }}
+  .card h2 {{ margin: 2px 4px 10px; }}
   h2 {{ font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin: 26px 4px 10px; }}
-  .pages {{ display: grid; gap: 16px; }}
-  .pages img {{ display: block; width: 100%; height: auto; border-radius: 6px; background: #EFE8DA; box-shadow: 0 10px 24px -14px rgba(57,34,20,.6); }}
+  .list {{ display: grid; gap: 10px; }}
+  .dl {{ display: flex; align-items: center; gap: 14px; text-decoration: none; color: inherit; background: var(--cream); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 14px; }}
+  .dl:first-child {{ background: var(--brown); color: #fff; border-color: var(--brown); }}
+  .dl:first-child .d {{ color: #E9DCCB; }}
+  .ic {{ flex: none; width: 50px; height: 44px; border-radius: 12px; display: grid; place-items: center; font-weight: 900; font-size: 12px; background: var(--gold-lt); color: var(--brown); }}
+  .dl:first-child .ic {{ background: var(--red); color: #fff; }}
+  .t {{ font-weight: 800; }} .d {{ font-size: 13px; color: var(--muted); }} .ar {{ margin-left: auto; font-size: 20px; opacity: .6; }}
+  .links {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }}
+  .btn {{ display: flex; align-items: center; justify-content: center; height: 46px; border-radius: 14px; text-decoration: none; font-weight: 800; font-size: 14px; }}
+  .btn.dark {{ background: var(--brown); color: #fff; }}
+  .btn.ghost {{ background: #fff; color: var(--brown); border: 1.5px solid var(--line); }}
+  .btn.red {{ background: var(--red); color: #fff; }}
+  .tabs {{ display: grid; grid-template-columns: repeat({len(results)}, 1fr); gap: 8px; }}
+  .tabs > input {{ position: absolute; opacity: 0; pointer-events: none; }}
+  .tabs > label {{ text-align: center; padding: 10px 6px; border-radius: 12px; background: #fff; border: 1.5px solid var(--line); font-weight: 800; cursor: pointer; line-height: 1.2; }}
+  .tabs > label small {{ display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); margin-top: 2px; }}
+  .tabs > input:checked + label {{ background: var(--brown); color: #fff; border-color: var(--brown); }}
+  .tabs > input:checked + label small {{ color: #E9DCCB; }}
+  .tabs > input:focus-visible + label {{ outline: 3px solid var(--gold); }}
+  .panels {{ grid-column: 1 / -1; margin-top: 8px; }}
+  .panel {{ display: none; gap: 16px; }}
+{show}
+  .bar {{ display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }}
+  .panel img {{ display: block; width: 100%; height: auto; border-radius: 6px; background: #EFE8DA; box-shadow: 0 10px 24px -14px rgba(57,34,20,.6); }}
   footer {{ text-align: center; color: var(--muted); font-size: 12.5px; padding: 0 20px 30px; }}
 </style>
 </head>
@@ -443,71 +607,41 @@ def web_page(n_pages, pdf_kb):
 <header>
   <span class="kick">PRINTABLE MENU CARD</span>
   <h1>Barkada House</h1>
-  <p>A4 menu booklet · {n_pages} pages · every dish with photo &amp; price</p>
+  <p>Every dish with photo &amp; price · choose your paper size</p>
 </header>
 <main>
-  <div class="actions">
-    <a class="btn dl" href="{PDF_NAME}" download>⬇ Download PDF <small>({pdf_kb / 1024:.1f} MB)</small></a>
-    <div class="row">
-      <a class="btn ghost" href="{PDF_NAME}" target="_blank" rel="noopener">Open / Print</a>
-      <a class="btn ghost red" href="../../">Digital menu →</a>
-    </div>
-    <a class="btn ghost" href="../">← QR code &amp; poster</a>
+  <div class="card">
+    <h2>Download</h2>
+    <div class="list">{downloads}</div>
+    <div class="links"><a class="btn red" href="../../">Digital menu →</a><a class="btn ghost" href="../">QR code &amp; poster</a></div>
   </div>
   <h2>Preview</h2>
-  <div class="pages">
-{imgs}
+  <div class="tabs">{tabs}
+    <div class="panels">{panels}
+    </div>
   </div>
 </main>
-<footer>Print on A4 at 100% (Actual size). Prices in Saudi Riyal (SR).</footer>
+<footer>Print at 100% / "Actual size" on the matching paper size. Prices in Saudi Riyal (SR).</footer>
 </body>
 </html>
 """
 
 
-# ------------------------------------------------------------------ main
 def main():
+    keys = [a for a in sys.argv[1:] if not a.startswith("--")] or list(FORMATS)
     M = menu()
-    doc_html, n_pages = build_html(M)
-    os.makedirs(OUT_DIR, exist_ok=True)
-    pdf = os.path.join(OUT_DIR, PDF_NAME)
-    tmp = os.path.join(os.path.dirname(os.path.abspath(__file__)), "_menu_card_build.html")
-    open(tmp, "w", encoding="utf-8").write(doc_html)
     browser = next((b for b in BROWSERS if os.path.exists(b)), None)
     if not browser:
         sys.exit("Google Chrome or Microsoft Edge is required.")
-    if os.path.exists(pdf):
-        os.remove(pdf)
-    try:
-        subprocess.run([browser, "--headless=new", "--disable-gpu", "--no-pdf-header-footer",
-                        "--run-all-compositor-stages-before-draw", "--virtual-time-budget=15000",
-                        "--allow-file-access-from-files", "--no-first-run", "--no-default-browser-check",
-                        f"--user-data-dir={os.path.join(tempfile.gettempdir(), 'bh-menucard-profile')}",
-                        f"--print-to-pdf={pdf}", "file:///" + tmp.replace("\\", "/")],
-                       check=True, capture_output=True, timeout=300)
-    finally:
-        if "--keep-html" not in sys.argv and os.path.exists(tmp):
-            os.remove(tmp)
-    if not os.path.exists(pdf):
-        sys.exit("Browser did not produce the PDF.")
-
-    import pymupdf
-    doc = pymupdf.open(pdf)
-    print(f"PDF -> {pdf}  ({len(doc)} pages, {os.path.getsize(pdf) // 1024} KB)")
-    if len(doc) != n_pages:
-        print(f"WARNING: expected {n_pages} pages, got {len(doc)} (something overflowed)")
-    for f in os.listdir(OUT_DIR):
+    os.makedirs(OUT_DIR, exist_ok=True)
+    for f in os.listdir(OUT_DIR):                      # previews from the old single-size layout
         if f.startswith("page-") and f.endswith(".webp"):
             os.remove(os.path.join(OUT_DIR, f))
-    for i, pg in enumerate(doc, 1):
-        pix = pg.get_pixmap(dpi=122)
-        im = Image.frombytes("RGB", (pix.w, pix.h), pix.samples)
-        im.resize((1000, round(im.height * 1000 / im.width)), Image.LANCZOS).save(
-            os.path.join(OUT_DIR, f"page-{i:02d}.webp"), "WEBP", quality=80, method=6)
-    open(os.path.join(OUT_DIR, "index.html"), "w", encoding="utf-8").write(
-        web_page(len(doc), os.path.getsize(pdf) / 1024))
+    results = [render(k, FORMATS[k], M, browser) for k in keys]
+    if len(keys) == len(FORMATS):
+        open(os.path.join(OUT_DIR, "index.html"), "w", encoding="utf-8").write(web_page(results))
+        print("web page -> qr/menucard/index.html")
     shutil.rmtree(IMG_TMP, ignore_errors=True)
-    print("web page -> qr/menucard/index.html")
 
 
 if __name__ == "__main__":
