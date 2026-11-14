@@ -12,7 +12,7 @@ Plain HTML/CSS/JS (no frameworks, no build step needed to deploy), ~14 KB of gzi
 | `assets/js/app.js` | Rendering, search, category bar, dish pop-up |
 | `assets/css/style.css` | Styles (brand gold `#D0AA2B`, brown `#392214`, red `#E61D25`) |
 | `assets/img/menu/` | Optimized photos, 3 sizes each (360/540/720 px WebP) |
-| `qr/` | QR code (PNG + SVG) and a printable A6 table card (PNG + PDF) |
+| `qr/` | QR code (PNG + SVG), **A5 poster** (PDF + PNG), simple A6 table card, and a download page served at `/qr/` |
 | `sw.js` | Service worker: instant repeat visits, works on weak signal |
 | `CNAME`, `.nojekyll` | GitHub Pages custom domain settings |
 | `tools/` | Scripts that rebuild the photos and the QR/icons |
@@ -39,10 +39,13 @@ The QR code points to `https://barakadamenu.hizarc.com/` and will work as soon a
 
 Each dish can be linked directly, e.g. `https://barakadamenu.hizarc.com/#bulalo`.
 
+Print files and the QR code: **https://barakadamenu.hizarc.com/qr/** (same site, no extra DNS record).
+
 ## Rebuilding assets
 
 ```bash
 pip install pillow "qrcode[pil]"
 python tools/build_images.py   # menu photos -> assets/img/menu
 python tools/build_assets.py   # QR code, table card, icons, share image
+python tools/build_qr_poster.py   # A5 poster PDF/PNG (needs Chrome; fonts in tools/fonts, SIL OFL)
 ```
