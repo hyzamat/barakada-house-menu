@@ -43,6 +43,7 @@ Each dish can be linked directly, e.g. `https://barkadamenu.hizarc.com/#bulalo`.
 Print files and the QR code: **https://barkadamenu.hizarc.com/qr/** (same site, no extra DNS record).
 Printable menu card (A4, A5, US Letter): **https://barkadamenu.hizarc.com/qr/menucard/**
 Visiting card (90 x 50 mm, front + back): **https://barkadamenu.hizarc.com/qr/visitingcard/**
+ORDER NOW poster (A4, A5, PNG): https://barkadamenu.hizarc.com/qr/order-now/barkada-house-order-now-A4.pdf
 
 ## WhatsApp ordering
 
@@ -72,4 +73,5 @@ python tools/build_assets.py   # QR code, table card, icons, share image
 python tools/build_qr_poster.py   # A5 poster PDF/PNG (needs Chrome; fonts in tools/fonts, SIL OFL)
 python tools/build_menu_card.py   # menu card PDFs (A4, A5, US Letter) + previews + /qr/menucard/ page (needs Chrome + Node)
 python tools/build_visiting_card.py   # visiting card PDFs + PNGs + /qr/visitingcard/ page (needs Chrome + Node)
+python tools/build_order_poster.py   # ORDER NOW poster, A4 + A5 PDF + PNG (needs Chrome + Node)
 ```
