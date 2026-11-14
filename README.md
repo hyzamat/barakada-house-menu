@@ -47,13 +47,16 @@ ORDER NOW poster (A4, A5, PNG): https://barkadamenu.hizarc.com/qr/order-now/bark
 
 ## WhatsApp ordering
 
-Guests tap **Add to order** on any dish (size + quantity), then the green WhatsApp button.
-The popup shows the order, total, order type (Dine-in / Pickup / Delivery), name, table or address
-and a note; **Send order on WhatsApp** opens WhatsApp with the whole order typed out.
+Guests tap the red **+** on a dish photo (or **Add to order** inside a dish for size + quantity),
+then the green **View order** button. With an empty order that button shows the 3 steps and
+**Start ordering**, which scrolls to the dishes and points at the **+** buttons.
+The popup shows the order, total, order type (Dine-in / Pickup / Delivery), number of people (Dine-in)
+or address (Delivery), name and a note; **Send order on WhatsApp** opens WhatsApp with the whole order typed out.
 
 - Number and order types: `restaurant.whatsapp` and `restaurant.orderTypes` in `assets/js/menu-data.js`.
 - `https://barkadamenu.hizarc.com/#order` opens the order popup straight away (good for social media bios).
-- `https://barkadamenu.hizarc.com/?table=5` pre-selects Dine-in with table 5 (for per-table QR codes).
+- `https://barkadamenu.hizarc.com/?table=5` pre-selects Dine-in and adds "Table: 5" to the message
+  (for per-table QR codes; guests are never asked to type a table number).
 - `https://barkadamenu.hizarc.com/?order=delivery` pre-selects Delivery (link for home orders).
 
 **Add-ons** ("Add to your order" row in the popup): the `extras` list in `assets/js/menu-data.js`.

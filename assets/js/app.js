@@ -43,6 +43,15 @@
   }
   function calText(it) { return it.cal != null && it.cal !== "" ? it.cal + " kcal" : ""; }
 
+  // "+" on the corner of every photo: one tap adds the dish, then it becomes  − 2 +
+  function quickAdd(it) {
+    return '<div class="card__ov"><div class="qa' + (it.prices ? " qa--sized" : "") + '" data-qa="' + it.id + '">' +
+      '<button class="qa__b qa__minus" type="button" data-qd="-1" aria-label="One less ' + esc(it.name) + '">&minus;</button>' +
+      '<span class="qa__n" aria-hidden="true"></span>' +
+      '<button class="qa__b qa__plus" type="button" data-qd="1" aria-label="Add ' + esc(it.name) + ' to your order">+</button>' +
+      "</div></div>";
+  }
+
   var CARD_SIZES = "(min-width: 1100px) 260px, (min-width: 900px) 23vw, (min-width: 640px) 31vw, 47vw";
   var LIST_SIZES = "104px";
 
@@ -63,13 +72,14 @@
         '<div class="combos">' +
         M.combos.map(function (c, i) {
           byId[c.id] = { item: c, combo: true };
-          return '<a class="combo" href="#' + c.id + '" data-id="' + c.id + '" data-s="' +
-            esc(norm(c.name + " combo " + c.dishes.join(" "))) + '">' +
+          return '<article class="combo" data-s="' + esc(norm(c.name + " combo " + c.dishes.join(" "))) + '">' +
+            '<a class="combo__link" href="#' + c.id + '" data-id="' + c.id + '">' +
             '<div class="ph">' + img(c.img, "(min-width: 640px) 330px, 82vw", { eager: i < 2, high: i === 0 }) +
             '<span class="combo__price">' + c.price + " " + CUR + "</span></div>" +
             '<div class="combo__body"><h3 class="combo__name">' + esc(c.name) + "</h3>" +
             '<ul class="combo__dishes">' + c.dishes.map(function (d) { return "<li>" + esc(d) + "</li>"; }).join("") + "</ul>" +
-            '<p class="combo__more"><b>+ FREE</b> rice, buko pandan, drinks, fruits & unli sabaw · ' + c.cal + " kcal</p></div></a>";
+            '<p class="combo__more"><b>+ FREE</b> rice, buko pandan, drinks, fruits & unli sabaw · ' + c.cal + " kcal</p></div></a>" +
+            quickAdd(c) + "</article>";
         }).join("") +
         "</div><p class=\"swipe-hint\">Swipe for more combos →</p></section>"
     );
@@ -86,14 +96,15 @@
           cat.items.map(function (it) {
             byId[it.id] = { item: it, cat: cat };
             var cal = calText(it);
-            return '<a class="card" href="#' + it.id + '" data-id="' + it.id + '" data-s="' +
-              esc(norm(it.name + " " + it.desc + " " + cat.name + " " + cat.en)) + '">' +
+            return '<article class="card" data-s="' + esc(norm(it.name + " " + it.desc + " " + cat.name + " " + cat.en)) + '">' +
+              '<a class="card__link" href="#' + it.id + '" data-id="' + it.id + '">' +
               (it.tag ? '<span class="tag">★ ' + esc(it.tag) + "</span>" : "") +
               '<div class="ph">' + img(it.img, CARD_SIZES) + "</div>" +
               '<div class="card__body"><h3 class="card__name">' + esc(it.name) + "</h3>" +
               '<p class="card__desc">' + esc(it.desc) + "</p>" +
               '<div class="card__meta"><span class="price">' + priceHTML(it) + "</span>" +
-              (cal ? '<span class="cal">' + cal + "</span>" : "") + "</div></div></a>";
+              (cal ? '<span class="cal">' + cal + "</span>" : "") + "</div></div></a>" +
+              quickAdd(it) + "</article>";
           }).join("") +
           "</div></section>"
       );
@@ -394,7 +405,8 @@
   var TYPES = R.orderTypes || ["Dine-in", "Pickup", "Delivery"];
   var fab = $("waFab"), fabTxt = $("waFabTxt"), tip = $("waTip"), tipTimer = 0;
   var cart = [];                                   // [{ id, s: size index or -1, n: quantity }]
-  var info = { type: "", name: "", table: "", addr: "", note: "", loc: "" };   // loc = map link from "Share my location"
+  // people = party size for Dine-in; table only comes from a table QR (?table=5); loc = map link from "Share my location"
+  var info = { type: "", name: "", table: "", people: 2, addr: "", note: "", loc: "" };
   var isDine = function (t) { return /dine/i.test(t); };
   var isDelivery = function (t) { return /deliver/i.test(t); };
   var DLV = R.delivery || {};
@@ -423,12 +435,36 @@
     cart.forEach(function (l) { n += l.n; sum += l.n * unit(l).price; });
     return { n: n, sum: sum };
   }
-  function saveCart() { store("bh-cart", cart); updateFab(); }
+  function saveCart() { store("bh-cart", cart); updateFab(); syncCards(); }
   function updateFab() {
     var t = totals();
+    var txt = t.n ? t.n + (t.n > 1 ? " items · " : " item · ") + t.sum + " " + CUR : "";
     fab.classList.toggle("has", t.n > 0);
-    fabTxt.textContent = t.n ? t.n + (t.n > 1 ? " items · " : " item · ") + t.sum + " " + CUR : "";
-    fab.setAttribute("aria-label", t.n ? "Your order, " + fabTxt.textContent + ". Send on WhatsApp" : "Order on WhatsApp");
+    fabTxt.innerHTML = t.n ? "<b>View order</b>" + txt : "";
+    fab.setAttribute("aria-label", t.n ? "View your order, " + txt + ". Send on WhatsApp" : "Order on WhatsApp");
+  }
+  // the "+" / "− 2 +" control on every card shows how many of that dish are in the basket
+  var qaEls = null;
+  function syncCards() {
+    if (!qaEls) qaEls = [].slice.call(menuEl.querySelectorAll("[data-qa]"));
+    var counts = Object.create(null);
+    cart.forEach(function (l) { counts[l.id] = (counts[l.id] || 0) + l.n; });
+    qaEls.forEach(function (el) {
+      var n = counts[el.getAttribute("data-qa")] || 0;
+      if (el._n === n) return;
+      el._n = n;
+      el.classList.toggle("has", n > 0);
+      el.children[1].textContent = n || "";
+    });
+  }
+  function takeOne(id, s) {
+    for (var i = 0; i < cart.length; i++) {
+      if (cart[i].id === id && cart[i].s === s) {
+        if (--cart[i].n <= 0) cart.splice(i, 1);
+        saveCart();
+        return;
+      }
+    }
   }
   function addToCart(id, s, n) {
     var l = null;
@@ -454,7 +490,10 @@
         "Delivery: " + (FEE === null ? "please confirm" : FEE ? FEE + " " + CUR : "FREE"));
     }
     out.push("*Total: " + (sum + fee()) + " " + CUR + (del && FEE === null ? " + delivery" : "") + "*", "", "*Order type:* " + info.type);
-    if (isDine(info.type) && info.table.trim()) out.push("*Table:* " + info.table.trim());
+    if (isDine(info.type)) {
+      out.push("*People:* " + info.people);
+      if (info.table.trim()) out.push("*Table:* " + info.table.trim());
+    }
     if (del && info.addr.trim()) out.push("*Address:* " + info.addr.trim());
     if (del && info.loc) out.push("*Location:* " + info.loc);
     if (info.name.trim()) out.push("*Name:* " + info.name.trim());
@@ -541,12 +580,16 @@
   function renderWa() {
     var t = totals();
     if (!t.n) {
+      var types = TYPES.length > 1 ? TYPES.slice(0, -1).join(", ") + " or " + TYPES[TYPES.length - 1] : TYPES[0];
       waBody.innerHTML =
-        '<div class="bubble">Mabuhay! 👋 Welcome to <b>' + esc(R.name) + "</b>.</div>" +
-        '<div class="bubble">Tap <b>Add to order</b> on any dish to build your order, then send it to us here on WhatsApp. 🍲</div>' +
-        '<div class="wa__btns"><button class="btn btn--ghost" type="button" data-wa-close>Browse the menu</button>' +
-        '<a class="btn btn--wa" href="' + esc(waLink("Hi " + R.name + "! 👋 I'd like to place an order.")) +
-        '" target="_blank" rel="noopener">' + WA_ICON + " Chat with us</a></div>";
+        '<div class="bubble">Mabuhay! 👋 Welcome to <b>' + esc(R.name) + "</b>. Ordering takes 3 easy steps:</div>" +
+        '<ol class="how">' +
+        '<li><b>Tap <i class="how__plus">+</i> on the dishes you want</b><span>Tap again for more. Tap a photo to see the details.</span></li>' +
+        "<li><b>Tap the green button</b><span>It shows your dishes and the total price.</span></li>" +
+        "<li><b>Send it on WhatsApp</b><span>Choose " + esc(types) + ". We confirm your order in the chat.</span></li></ol>" +
+        '<button class="btn btn--add btn--start" type="button" data-wa-start>Start ordering</button>' +
+        '<a class="wa__chat" href="' + esc(waLink("Hi " + R.name + "! 👋 I'd like to place an order.")) +
+        '" target="_blank" rel="noopener">' + WA_ICON + " Or just chat with us on WhatsApp</a>";
       return;
     }
     waBody.innerHTML =
@@ -558,7 +601,11 @@
       TYPES.map(function (ty) {
         return '<button type="button" role="radio" data-type="' + esc(ty) + '" aria-checked="' + (ty === info.type) + '">' + esc(ty) + "</button>";
       }).join("") + "</div>" +
-      field("table", "Table number", 'inputmode="numeric" placeholder="e.g. 5"', "dine") +
+      '<div class="fld ppl" data-show="dine"><span id="waPplL">Number of people</span>' +
+      '<div class="qty qty--lg" role="group" aria-labelledby="waPplL">' +
+      '<button type="button" data-pp="-1" aria-label="One person less">&minus;</button>' +
+      '<span id="waPpl" aria-live="polite">' + info.people + "</span>" +
+      '<button type="button" data-pp="1" aria-label="One person more">+</button></div></div>' +
       (DLV.note ? '<p class="dlv__note">' + esc(DLV.note) + "</p>" : "") +
       field("addr", "Delivery address", 'rows="2" autocomplete="street-address" placeholder="Building / villa, street, area"', "delivery") +
       '<div class="loc" id="waLoc">' + locHTML() + "</div>" +
@@ -601,7 +648,30 @@
     return true;
   }
   function addedTip() {
-    if (once("bh-tip-added")) showTip("<b>Added to your order &#10003;</b>Tap the green button when you are ready to send it.", 6000);
+    if (!once("bh-tip-added")) return false;
+    showTip("<b>Added to your order &#10003;</b>Add more dishes, then tap the green button to send your order.", 6000);
+    return true;
+  }
+  // "Start ordering": go to the dishes and point at the + buttons, so it never feels like just going back
+  function startOrdering() {
+    closeWa();
+    setTimeout(function () {
+      var first = menuEl.querySelector("[data-sec]:not([hidden])");
+      var move = 0;                                  // how far the page is about to scroll down
+      if (first && window.scrollY < menuEl.offsetTop - barEl.offsetHeight - 2) {
+        move = first.getBoundingClientRect().top - barEl.offsetHeight;
+        goTo(first);
+      }
+      showTip("<b>Tap + on a dish to add it</b>When you are done, tap the green button to send your order.", 12000);
+      // pulse the + buttons that are (or are about to be) on screen
+      var seen = 0;
+      (qaEls || []).forEach(function (el) {
+        if (seen >= 8 || el._n) return;
+        var r = el.getBoundingClientRect(), y = r.top - move;
+        if (r.width && y > 0 && y < window.innerHeight) { seen++; el.classList.add("pulse"); }
+      });
+      setTimeout(function () { (qaEls || []).forEach(function (el) { el.classList.remove("pulse"); }); }, 4200);
+    }, 280);
   }
 
   function initOrder() {
@@ -627,12 +697,25 @@
       info.type = TYPES.filter(function (ty) { return ty.toLowerCase().indexOf(want) === 0; })[0] || info.type;
     }
     updateFab();
+    syncCards();
 
     doc.addEventListener("click", function (e) {
       var a = e.target.closest("[data-wa-open]");
       if (!a) return;
       e.preventDefault();
       openWa();
+    });
+    // quick add / remove straight from the menu cards
+    menuEl.addEventListener("click", function (e) {
+      var b = e.target.closest("[data-qd]");
+      if (!b) return;
+      var id = b.parentNode.getAttribute("data-qa"), ref = byId[id];
+      if (!ref) return;
+      if (ref.item.prices) { openItem(id); return; }   // has sizes: pick one in the dish popup
+      if (+b.getAttribute("data-qd") > 0) {
+        if (countOf(id, -1) < 99) addToCart(id, -1, 1);
+        if (!addedTip()) hideTip();                     // the first add explains the green button
+      } else takeOne(id, -1);
     });
     $("waClose").addEventListener("click", closeWa);
     wa.addEventListener("click", function (e) { if (e.target === wa) closeWa(); });
@@ -655,6 +738,9 @@
         if (!x) return;
         addToCart(x.id, x.s, 1);
         refresh();
+      } else if (b.hasAttribute("data-pp")) {
+        info.people = Math.max(1, Math.min(50, info.people + +b.getAttribute("data-pp")));
+        $("waPpl").textContent = info.people;
       } else if (b.hasAttribute("data-loc")) {
         getLoc(b);
       } else if (b.hasAttribute("data-loc-rm")) {
@@ -669,6 +755,8 @@
         cart = [];
         saveCart();
         renderWa();
+      } else if (b.hasAttribute("data-wa-start")) {
+        startOrdering();
       } else if (b.hasAttribute("data-wa-close")) {
         closeWa();
       } else if (b.id === "waSend") {
@@ -690,11 +778,11 @@
     });
 
     $("waTipX").addEventListener("click", function (e) { e.stopPropagation(); hideTip(); });
-    tip.addEventListener("click", function () { hideTip(); openWa(); });
+    tip.addEventListener("click", function () { hideTip(); if (cart.length) openWa(); });
     // a gentle hint, once per visit
     setTimeout(function () {
-      if (!cart.length && !sheet.open && !wa.open && once("bh-tip")) {
-        showTip("<b>Order on WhatsApp</b>Add dishes to your order, then send it to us in one tap.", 9000);
+      if (!cart.length && !sheet.open && !wa.open && tip.hidden && once("bh-tip")) {
+        showTip("<b>Order here on WhatsApp</b>Tap + on a dish to add it, then tap the green button to send your order.", 9000);
       }
     }, 5000);
   }
