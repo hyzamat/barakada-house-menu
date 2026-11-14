@@ -1,5 +1,6 @@
 """
-Builds the QR code, printable table card, app icons and social share image.
+Builds the QR code, printable table card and app icons.
+(The link-preview picture is built by tools/build_share_image.py.)
 
 Run from the project root:
     python tools/build_assets.py
@@ -12,7 +13,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 URL = "https://barkadamenu.hizarc.com/"
-SRC_DIR = os.path.join(ROOT, "Menu Item IMage")
 IMG_DIR = os.path.join(ROOT, "assets", "img")
 QR_DIR = os.path.join(ROOT, "qr")
 
@@ -108,26 +108,9 @@ def make_icons():
         im.resize((size, size), Image.LANCZOS).save(os.path.join(IMG_DIR, name), optimize=True)
 
 
-def make_og():
-    W, H = 1200, 630
-    og = Image.new("RGB", (W, H), GOLD)
-    photo = Image.open(os.path.join(SRC_DIR, "Feast_of_dishes_on_table_8c2d966f.jpg")).convert("RGB")
-    photo = photo.resize((H, H), Image.LANCZOS)
-    og.paste(photo, (W - H, 0))
-    d = ImageDraw.Draw(og)
-    cx = (W - H) // 2
-    center_text(d, cx, 150, "BARKADA", font("ARLRDBD.TTF", 96), WHITE, spacing=6)
-    center_text(d, cx, 255, "HOUSE", font("ARLRDBD.TTF", 96), WHITE, spacing=6)
-    center_text(d, cx, 385, "Authentic Filipino Food", font("arialbd.ttf", 34), BROWN)
-    d.rounded_rectangle((cx - 150, 445, cx + 150, 505), radius=30, fill=RED)
-    center_text(d, cx, 456, "View Menu", font("arialbd.ttf", 32), WHITE)
-    og.save(os.path.join(IMG_DIR, "og.jpg"), quality=85, optimize=True, progressive=True)
-
-
 if __name__ == "__main__":
     qr_img = make_qr()
     make_card(qr_img)
     make_icons()
-    make_og()
     print("QR ->", URL)
     print("done")

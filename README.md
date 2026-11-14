@@ -67,12 +67,20 @@ on the menu (`{ ref: "iced-tea" }`). An extra with `price: null` stays hidden un
 `0` = free), `minOrder` (SR) and an optional `note` shown to the customer. Delivery orders need an address
 or a location pin (**Share my location** adds a Google Maps link to the WhatsApp message).
 
+## Link preview (WhatsApp, Facebook, iMessage)
+
+Pasting the site link shows the big **ORDER NOW** picture `assets/img/og-order-now.jpg` (1200 x 630, under 100 KB),
+set by the `og:` tags at the top of `index.html`. Chat apps keep old previews for a while: after changing the picture,
+give it a new file name (and update the tags) so the new one is fetched. In WhatsApp, paste the link and wait a moment
+for the big preview to appear before sending.
+
 ## Rebuilding assets
 
 ```bash
 pip install pillow "qrcode[pil]"
 python tools/build_images.py   # menu photos -> assets/img/menu
-python tools/build_assets.py   # QR code, table card, icons, share image
+python tools/build_assets.py   # QR code, table card, icons
+python tools/build_share_image.py   # link-preview picture for WhatsApp etc. (needs Chrome + Node)
 python tools/build_qr_poster.py   # A5 poster PDF/PNG (needs Chrome; fonts in tools/fonts, SIL OFL)
 python tools/build_menu_card.py   # menu card PDFs (A4, A5, US Letter) + previews + /qr/menucard/ page (needs Chrome + Node)
 python tools/build_visiting_card.py   # visiting card PDFs + PNGs + /qr/visitingcard/ page (needs Chrome + Node)
