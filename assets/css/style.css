@@ -513,7 +513,17 @@ h1, h2, h3, p { margin: 0; }
 .loc__btn:disabled { opacity: .7; }
 .loc__ok { font-size: 14px; font-weight: 800; color: var(--wa-dk); }
 .loc__rm { border: 0; background: transparent; cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 700; text-decoration: underline; }
-.loc__msg { flex-basis: 100%; font-size: 12.5px; color: #B3141B; }
+.loc__help {
+  flex-basis: 100%; padding: 12px 14px; border-radius: 14px; background: #FFF6F5; border: 1.5px solid #F4C9C6;
+  font-size: 13.5px; line-height: 1.45; color: var(--ink);
+}
+.loc__help > b { display: block; margin-bottom: 4px; font-size: 14.5px; color: #B3141B; }
+.loc__help ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 5px; }
+.loc__acts { display: flex; gap: 8px; margin-top: 12px; }
+.loc__acts .btn { height: 44px; font-size: 14px; }
+.loc__acts .btn--ghost { background: #fff; }
+.loc__type { background: var(--brown); color: #fff; }
+.loc__alt { margin-top: 8px; font-size: 12px; color: var(--muted); }
 
 /* ---------- Larger screens ---------- */
 @media (min-width: 640px) {

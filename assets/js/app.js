@@ -412,7 +412,7 @@
   var DLV = R.delivery || {};
   var FEE = typeof DLV.fee === "number" && DLV.fee >= 0 ? DLV.fee : null;      // null -> confirmed on WhatsApp
   var MIN = +DLV.minOrder || 0;
-  var locMsg = "";
+  var locErr = "";      // "" | "denied" (location blocked) | "unavailable" (no GPS fix) | "unsupported"
   function fee() { return isDelivery(info.type) && FEE ? FEE : 0; }
   function belowMin() { return isDelivery(info.type) && MIN > 0 && totals().sum < MIN; }
   function countOf(id, s) {
@@ -549,12 +549,44 @@
       return '<span class="loc__ok">&#10003; Location pin added</span>' +
         '<button class="loc__rm" type="button" data-loc-rm>Remove</button>';
     }
-    return '<button class="btn btn--ghost loc__btn" type="button" data-loc>&#128205; Share my location</button>' +
-      (locMsg ? '<p class="loc__msg">' + esc(locMsg) + "</p>" : "");
+    if (!locErr) return '<button class="btn btn--ghost loc__btn" type="button" data-loc>&#128205; Share my location</button>';
+    var title = locErr === "denied" ? "Location is turned off for this website"
+      : locErr === "unsupported" ? "This browser can't share your location" : "Couldn't find your location";
+    var body = locErr === "denied"
+      ? '<p>To turn it on:</p><ol>' + locSteps().map(function (s) { return "<li>" + s + "</li>"; }).join("") + "</ol>"
+      : locErr === "unsupported" ? "<p>Please type your address above.</p>"
+      : "<p>The GPS signal may be weak. Try again, or type your address above.</p>";
+    return '<div class="loc__help" role="alert"><b>&#9888;&#65039; ' + title + "</b>" + body +
+      '<div class="loc__acts">' + (locErr !== "unsupported" ? '<button class="btn btn--ghost" type="button" data-loc>&#128205; Try again</button>' : "") +
+      '<button class="btn loc__type" type="button" data-loc-type>&#9999;&#65039; Type address</button></div>' +
+      '<p class="loc__alt">Or send your location pin in WhatsApp after the order.</p></div>';
+  }
+  // how to allow location, for the browser the customer is actually using
+  function locSteps() {
+    var ua = navigator.userAgent;
+    var ios = /iP(hone|ad|od)/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (ios) {
+      var app = /CriOS/.test(ua) ? "Chrome" : /FxiOS/.test(ua) ? "Firefox" : /Instagram/.test(ua) ? "Instagram"
+        : /FBAN|FBAV/.test(ua) ? "Facebook" : /EdgiOS/.test(ua) ? "Edge" : "";
+      if (app) {
+        return ["Open <b>Settings</b> &rarr; <b>Apps</b> &rarr; <b>" + app + "</b> &rarr; <b>Location</b> &rarr; <b>While Using the App</b>.",
+          "Check that <b>Settings</b> &rarr; <b>Privacy &amp; Security</b> &rarr; <b>Location Services</b> is <b>On</b>.",
+          "Come back here and tap <b>Try again</b>."];
+      }
+      return ["Tap <b>aA</b> in the address bar &rarr; <b>Website Settings</b> &rarr; <b>Location</b> &rarr; <b>Allow</b>.",
+        "Still off? Open <b>Settings</b> &rarr; <b>Privacy &amp; Security</b> &rarr; <b>Location Services</b>: turn it <b>On</b> and set <b>Safari Websites</b> to <b>While Using the App</b>.",
+        "Come back here and tap <b>Try again</b>."];
+    }
+    if (/Android/.test(ua)) {
+      return ["Tap the <b>&#9432;</b> or <b>lock</b> icon next to the web address at the top.",
+        "Tap <b>Permissions</b> &rarr; <b>Location</b> &rarr; <b>Allow</b>.",
+        "Turn on <b>Location</b> in your phone's quick settings, then tap <b>Try again</b>."];
+    }
+    return ["Click the <b>lock</b> icon next to the web address.", "Set <b>Location</b> to <b>Allow</b>.", "Tap <b>Try again</b>."];
   }
   function getLoc(btn) {
-    function done(msg) { locMsg = msg; var box = $("waLoc"); if (box) box.innerHTML = locHTML(); }
-    if (!navigator.geolocation) { done("Location is not available on this phone. Please type your address."); return; }
+    function done(err) { locErr = err; var box = $("waLoc"); if (box) box.innerHTML = locHTML(); }
+    if (!navigator.geolocation || !window.isSecureContext) { done("unsupported"); return; }
     btn.disabled = true;
     btn.textContent = "Getting your location…";
     navigator.geolocation.getCurrentPosition(function (p) {
@@ -562,8 +594,8 @@
       var a = waBody.querySelector('[data-f="addr"]');
       if (a) a.classList.remove("err");
       done("");
-    }, function () {
-      done("Couldn't get your location. Type your address, or send your location in WhatsApp after the order.");
+    }, function (err) {
+      done(err && err.code === 1 ? "denied" : "unavailable");   // 1 = permission denied; 2/3 = no position / timeout
     }, { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 });
   }
   function refresh() {                             // after the basket changes while the popup is open
@@ -744,6 +776,9 @@
         $("waPpl").textContent = info.people;
       } else if (b.hasAttribute("data-loc")) {
         getLoc(b);
+      } else if (b.hasAttribute("data-loc-type")) {
+        var ad = waBody.querySelector('[data-f="addr"]');
+        if (ad) { ad.scrollIntoView({ block: "center", behavior: "smooth" }); ad.focus(); }
       } else if (b.hasAttribute("data-loc-rm")) {
         info.loc = "";
         $("waLoc").innerHTML = locHTML();
